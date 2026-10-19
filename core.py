@@ -1,4 +1,3 @@
-"""Inti pemrosesan: parse LUT .cube, decode RAW, terapkan LUT, simpan hasil dengan EXIF."""
 from __future__ import annotations
 
 import re
@@ -7,24 +6,20 @@ from pathlib import Path
 
 import numpy as np
 import rawpy
-import tifffile
 from PIL import Image
 
-# Payload maksimum segmen APP1 JPEG (65533) dengan margin aman.
 MAX_JPEG_EXIF_BYTES = 65_500
 
 
 @dataclass(frozen=True)
 class CubeLUT:
-    """LUT 3D hasil parse berkas .cube."""
     size: int
-    domain_min: np.ndarray  # shape (3,)
-    domain_max: np.ndarray  # shape (3,)
-    table: np.ndarray       # shape (size, size, size, 3), indeks [b][g][r]
+    domain_min: np.ndarray
+    domain_max: np.ndarray
+    table: np.ndarray
 
 
 def parse_cube(path: Path) -> CubeLUT:
-    """Parse berkas .cube 3D. Gagal cepat pada berkas cacat."""
     size: int | None = None
     domain_min = np.array([0.0, 0.0, 0.0], dtype=np.float32)
     domain_max = np.array([1.0, 1.0, 1.0], dtype=np.float32)
@@ -64,7 +59,6 @@ def parse_cube(path: Path) -> CubeLUT:
 
 
 def apply_lut(image: np.ndarray, lut: CubeLUT) -> np.ndarray:
-    """Terapkan LUT 3D dengan interpolasi trilinear. image: float32 [0,1], shape (H,W,3)."""
     img = np.clip(image, lut.domain_min, lut.domain_max)
     norm = (img - lut.domain_min) / (lut.domain_max - lut.domain_min) * (lut.size - 1)
 
@@ -91,45 +85,37 @@ def apply_lut(image: np.ndarray, lut: CubeLUT) -> np.ndarray:
     return np.clip(c0 + fb * (c1 - c0), 0.0, 1.0).astype(np.float32)
 
 
-def decode_raw(path: Path) -> np.ndarray:
-    """Decode RAW → sRGB float32 [0,1], white balance kamera, gamma sRGB."""
+def decode_raw(path: Path, colorspace: str = "srgb") -> np.ndarray:
     with rawpy.imread(str(path)) as raw:
-        rgb16 = raw.postprocess(
-            use_camera_wb=True,
-            output_color=rawpy.ColorSpace.sRGB,
-            output_bps=16,
-            no_auto_bright=False,
-            fbdd_noise_reduction=rawpy.FBDDNoiseReductionMode.Off,
-        )
-    return rgb16.astype(np.float32) / 65535.0
+        if colorspace == "log":
+            rgb16 = raw.postprocess(
+                use_camera_wb=True,
+                output_color=rawpy.ColorSpace.sRGB,
+                output_bps=16,
+                no_auto_bright=False,
+                gamma=(1.0, 1.0),
+                fbdd_noise_reduction=rawpy.FBDDNoiseReductionMode.Off,
+            )
+            img = rgb16.astype(np.float32) / 65535.0
+            return np.power(np.maximum(img, 1e-6), 1.0 / 2.4).astype(np.float32)
+        else:
+            rgb16 = raw.postprocess(
+                use_camera_wb=True,
+                output_color=rawpy.ColorSpace.sRGB,
+                output_bps=16,
+                no_auto_bright=False,
+                fbdd_noise_reduction=rawpy.FBDDNoiseReductionMode.Off,
+            )
+            return rgb16.astype(np.float32) / 65535.0
+
+
+def blend_intensity(graded: np.ndarray, original: np.ndarray, intensity: float) -> np.ndarray:
+    return np.clip(graded * intensity + original * (1.0 - intensity), 0.0, 1.0).astype(np.float32)
 
 
 def extract_exif(raw_path: Path) -> bytes | None:
-    """Ekstrak EXIF dari berkas RAW, hanya pertahankan tag inti (whitelist).
-
-    Return None bila EXIF tak terbaca atau tetap melebihi batas.
-    """
-    # Tag yang dipertahankan (ID -> nama untuk dokumentasi)
-    # IFD0 (root)
-    WHITELIST_IFD0 = {
-        0x010F,  # Make
-        0x0110,  # Model
-        0x0112,  # Orientation
-        0x0132,  # DateTime
-        0x8769,  # ExifIFD pointer (akan di-filter)
-    }
-    # ExifIFD (0x8769)
-    WHITELIST_EXIF = {
-        0x829A,  # ExposureTime
-        0x829D,  # FNumber
-        0x8827,  # ISOSpeedRatings
-        0x9000,  # ExifVersion
-        0x9003,  # DateTimeOriginal
-        0x9004,  # DateTimeDigitized
-        0x920A,  # FocalLength
-        0x927C,  # MakerNote (BUANG)
-        0x9286,  # UserComment (BUANG)
-    }
+    WHITELIST_IFD0 = {0x010F, 0x0110, 0x0112, 0x0132, 0x8769}
+    WHITELIST_EXIF = {0x829A, 0x829D, 0x8827, 0x9000, 0x9003, 0x9004, 0x920A}
 
     try:
         with Image.open(raw_path) as im:
@@ -137,27 +123,23 @@ def extract_exif(raw_path: Path) -> bytes | None:
             if not original_exif:
                 return None
 
-            # Buat EXIF baru
-            from PIL.ExifTags import Base
             new_exif = Image.Exif()
 
-            # Salin tag IFD0 yang aman
             for tag_id in WHITELIST_IFD0:
-                if tag_id in original_exif and tag_id != 0x8769:  # ExifIFD ditangani terpisah
+                if tag_id in original_exif and tag_id != 0x8769:
                     new_exif[tag_id] = original_exif[tag_id]
 
-            # Salin tag ExifIFD yang aman
             try:
                 exif_ifd = original_exif.get_ifd(0x8769)
                 if exif_ifd:
                     new_exif_ifd = {}
                     for tag_id in WHITELIST_EXIF:
-                        if tag_id in exif_ifd and tag_id not in (0x927C, 0x9286):  # Buang MakerNote & UserComment
+                        if tag_id in exif_ifd:
                             new_exif_ifd[tag_id] = exif_ifd[tag_id]
                     if new_exif_ifd:
                         new_exif[0x8769] = new_exif_ifd
             except Exception:
-                pass  # ExifIFD tidak ada atau rusak, lanjutkan
+                pass
 
             blob = new_exif.tobytes()
             return blob if len(blob) <= MAX_JPEG_EXIF_BYTES else None
@@ -167,47 +149,10 @@ def extract_exif(raw_path: Path) -> bytes | None:
 
 def save_with_exif(image: Image.Image, path: Path,
                    exif: bytes | None = None, **save_kwargs) -> None:
-    """Simpan gambar; EXIF opsional. Bila EXIF tetap ditolak PIL, simpan tanpa EXIF."""
     if exif:
         try:
             image.save(path, exif=exif, **save_kwargs)
             return
         except ValueError:
-            pass  # blob masih melanggar batas segmen → degradasi lembut
+            pass
     image.save(path, **save_kwargs)
-
-
-def process_photo(raw_path: Path, cube_path: Path, out_dir: Path,
-                  preview_max_side: int = 1600) -> dict[str, Path]:
-    """Alur penuh: RAW + .cube → TIFF 16-bit, JPEG 8-bit dengan EXIF, dan 2 preview."""
-    lut = parse_cube(cube_path)
-    image = decode_raw(raw_path)
-    graded = apply_lut(image, lut)
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    stem = raw_path.stem
-    paths: dict[str, Path] = {}
-
-    tiff16 = (graded * 65535.0).round().astype(np.uint16)
-    paths["tiff"] = out_dir / f"{stem}_lut.tiff"
-    tifffile.imwrite(paths["tiff"], tiff16, photometric="rgb", compression="deflate")
-
-    jpeg8 = (graded * 255.0).round().astype(np.uint8)
-    paths["jpeg"] = out_dir / f"{stem}_lut.jpg"
-    save_with_exif(Image.fromarray(jpeg8, "RGB"), paths["jpeg"],
-                   extract_exif(raw_path), quality=95)
-
-    before8 = (image * 255.0).round().astype(np.uint8)
-    before_img = Image.fromarray(before8, "RGB")
-    after_img = Image.fromarray(jpeg8, "RGB")
-    scale = min(1.0, preview_max_side / max(before_img.size))
-    if scale < 1.0:
-        size = (max(1, int(before_img.width * scale)),
-                max(1, int(before_img.height * scale)))
-        before_img = before_img.resize(size, Image.LANCZOS)
-        after_img = after_img.resize(size, Image.LANCZOS)
-    paths["preview_before"] = out_dir / "preview_before.jpg"
-    paths["preview_after"] = out_dir / "preview_after.jpg"
-    before_img.save(paths["preview_before"], quality=88)
-    after_img.save(paths["preview_after"], quality=88)
-    return paths

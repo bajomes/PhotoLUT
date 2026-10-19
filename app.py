@@ -1,4 +1,3 @@
-"""Backend LUTPhoto: batch, progress polling, ZIP, cleanup otomatis, preservasi EXIF."""
 from __future__ import annotations
 
 import shutil
@@ -9,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import tifffile
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
@@ -52,16 +51,13 @@ async def _save_upload(upload: UploadFile, dest: Path, max_bytes: int) -> None:
 def _save_outputs(graded: np.ndarray, before: np.ndarray,
                   out_dir: Path, stem: str, idx: int,
                   raw_path: Path) -> dict[str, Path]:
-    """Simpan TIFF 16-bit, JPEG 8-bit dengan EXIF, dan 2 preview."""
     paths: dict[str, Path] = {}
     suffix = f"_{idx:03d}"
 
-    # TIFF 16-bit
     tiff16 = (graded * 65535.0).round().astype(np.uint16)
     paths["tiff"] = out_dir / f"{stem}{suffix}_lut.tiff"
     tifffile.imwrite(paths["tiff"], tiff16, photometric="rgb", compression="deflate")
 
-    # JPEG 8-bit dengan EXIF dari RAW asli
     jpeg8 = (graded * 255.0).round().astype(np.uint8)
     paths["jpeg"] = out_dir / f"{stem}{suffix}_lut.jpg"
     exif_data = core.extract_exif(raw_path)
@@ -72,7 +68,6 @@ def _save_outputs(graded: np.ndarray, before: np.ndarray,
         quality=95
     )
 
-    # Preview
     before8 = (before * 255.0).round().astype(np.uint8)
     before_img = Image.fromarray(before8, "RGB")
     after_img = Image.fromarray(jpeg8, "RGB")
@@ -90,8 +85,8 @@ def _save_outputs(graded: np.ndarray, before: np.ndarray,
 
 
 def _process_job_sync(job_id: str, raw_paths: list[Path],
-                      cube_path: Path, job_dir: Path) -> None:
-    """Berjalan di background thread. Update job state sepanjang alur."""
+                      cube_path: Path, job_dir: Path,
+                      colorspace: str, intensity: float) -> None:
     try:
         jobs.update_job(job_id, status=jobs.JobStatus.DECODING,
                         total_files=len(raw_paths))
@@ -108,10 +103,12 @@ def _process_job_sync(job_id: str, raw_paths: list[Path],
                             done_files=i,
                             progress=int((i / len(raw_paths)) * 100))
 
-            image = core.decode_raw(raw_path)
+            image = core.decode_raw(raw_path, colorspace=colorspace)
 
             jobs.update_job(job_id, status=jobs.JobStatus.APPLYING)
             graded = core.apply_lut(image, lut)
+            if intensity < 1.0:
+                graded = core.blend_intensity(graded, image, intensity)
 
             jobs.update_job(job_id, status=jobs.JobStatus.SAVING)
             paths = _save_outputs(graded, image, out_dir, raw_path.stem, i, raw_path)
@@ -134,11 +131,17 @@ def _process_job_sync(job_id: str, raw_paths: list[Path],
 
 
 @app.post("/api/process")
-async def process(raw_files: list[UploadFile], cube: UploadFile) -> dict:
+async def process(raw_files: list[UploadFile], cube: UploadFile,
+                  colorspace: str = Form("srgb"),
+                  intensity: float = Form(1.0)) -> dict:
     if not raw_files:
         raise HTTPException(400, "Paling tidak satu berkas RAW diperlukan")
     if not (cube.filename or "").lower().endswith(".cube"):
         raise HTTPException(400, "Berkas LUT harus berformat .cube")
+    if colorspace not in ("srgb", "log"):
+        raise HTTPException(400, "Colorspace tidak valid")
+    if not (0.0 <= intensity <= 1.0):
+        raise HTTPException(400, "Intensitas harus antara 0.0 dan 1.0")
 
     raw_exts: list[str] = []
     for raw in raw_files:
@@ -168,7 +171,7 @@ async def process(raw_files: list[UploadFile], cube: UploadFile) -> dict:
 
     threading.Thread(
         target=_process_job_sync,
-        args=(job.id, raw_paths, cube_path, job_dir),
+        args=(job.id, raw_paths, cube_path, job_dir, colorspace, intensity),
         daemon=True,
     ).start()
 
