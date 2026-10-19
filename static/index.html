@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>LUTPhoto — LUT Video untuk Foto</title>
+        <title>LUTPhoto — Video LUTs for Photos</title>
         <style>
             :root {
                 --bg: #111318;
@@ -100,6 +100,49 @@
                 width: 100%;
                 accent-color: var(--accent);
                 margin-top: 4px;
+            }
+            .file-list {
+                margin-top: 20px;
+            }
+            .file-list h3 {
+                color: var(--muted);
+                font-size: 0.9rem;
+                margin: 0 0 10px;
+            }
+            .file-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+                gap: 10px;
+            }
+            .file-item {
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 8px;
+                text-align: center;
+                cursor: move;
+                transition: transform 0.15s;
+            }
+            .file-item:hover {
+                transform: scale(1.05);
+            }
+            .file-item.dragging {
+                opacity: 0.5;
+            }
+            .file-item img {
+                width: 100%;
+                aspect-ratio: 1;
+                object-fit: cover;
+                border-radius: 4px;
+            }
+            .file-item span {
+                display: block;
+                font-size: 0.75rem;
+                color: var(--muted);
+                margin-top: 6px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
             }
             button.primary {
                 margin-top: 24px;
@@ -281,36 +324,39 @@
         <div class="wrap">
             <h1>LUTPhoto</h1>
             <p class="sub">
-                Terapkan LUT video (.cube) ke satu atau banyak foto RAW sekaligus — semua diproses lokal, hasil otomatis
-                dibersihkan.
+                Apply video LUTs (.cube) to one or many RAW photos — all processed locally, results auto-cleaned.
             </p>
 
             <div id="inputArea">
                 <div class="uploads">
                     <div class="drop" id="dropRaw">
-                        <b>1. Foto RAW (bisa banyak)</b>
-                        <span id="rawName">Klik atau seret berkas .cr2 / .nef / .arw / .dng / …</span>
+                        <b>1. RAW Photos (multiple)</b>
+                        <span id="rawName">Click or drag .cr2 / .nef / .arw / .dng / … files</span>
                         <input type="file" id="rawInput" hidden multiple />
                     </div>
                     <div class="drop" id="dropCube">
-                        <b>2. LUT .cube (satu untuk semua)</b>
-                        <span id="cubeName">Klik atau seret berkas .cube</span>
+                        <b>2. LUT .cube (one for all)</b>
+                        <span id="cubeName">Click or drag .cube file</span>
                         <input type="file" id="cubeInput" hidden accept=".cube" />
                     </div>
+                </div>
+                <div class="file-list" id="fileList" style="display: none">
+                    <h3>Files to process (drag to reorder)</h3>
+                    <div class="file-grid" id="fileGrid"></div>
                 </div>
                 <div class="options">
                     <label for="colorspace">3. Input Color Space</label>
                     <select id="colorspace">
-                        <option value="srgb">sRGB / Rec.709 (default, untuk LUT kreatif umum)</option>
-                        <option value="log">Log (untuk LUT yang dirancang untuk S-Log, V-Log, C-Log)</option>
+                        <option value="srgb">sRGB / Rec.709 (default, for common creative LUTs)</option>
+                        <option value="log">Log (for LUTs designed for S-Log, V-Log, C-Log)</option>
                     </select>
-                    <label for="intensity">4. Intensitas LUT: <span id="intensityVal">100%</span></label>
+                    <label for="intensity">4. LUT Intensity: <span id="intensityVal">100%</span></label>
                     <input type="range" id="intensity" min="0" max="100" value="100" />
                 </div>
-                <button class="primary" id="processBtn" disabled>Proses</button>
+                <button class="primary" id="processBtn" disabled>Process</button>
                 <div class="progress-wrap" id="progressWrap">
                     <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-                    <div class="progress-status" id="progressStatus">Memulai…</div>
+                    <div class="progress-status" id="progressStatus">Starting…</div>
                 </div>
                 <div id="error"></div>
             </div>
@@ -318,8 +364,8 @@
             <div id="result">
                 <div class="summary" id="summary"></div>
                 <div class="gallery" id="gallery"></div>
-                <a class="zip-btn" id="dlZip" download>Unduh Semua Hasil (ZIP)</a>
-                <button class="ghost" id="resetBtn">Proses foto lain</button>
+                <a class="zip-btn" id="dlZip" download>Download All Results (ZIP)</a>
+                <button class="ghost" id="resetBtn">Process other photos</button>
             </div>
         </div>
 
@@ -352,15 +398,52 @@
 
             function setRaw(files) {
                 rawFiles = files;
-                $("rawName").textContent = files.length === 1 ? files[0].name : `${files.length} berkas dipilih`;
+                $("rawName").textContent = files.length === 1 ? files[0].name : `${files.length} files selected`;
                 $("dropRaw").classList.add("filled");
                 $("processBtn").disabled = !(rawFiles.length && cubeFile);
+                renderFileGrid();
             }
+
             function setCube(files) {
                 cubeFile = files[0];
                 $("cubeName").textContent = cubeFile.name;
                 $("dropCube").classList.add("filled");
                 $("processBtn").disabled = !(rawFiles.length && cubeFile);
+            }
+
+            function renderFileGrid() {
+                if (!rawFiles.length) {
+                    $("fileList").style.display = "none";
+                    return;
+                }
+                $("fileList").style.display = "block";
+                const grid = $("fileGrid");
+                grid.innerHTML = "";
+                rawFiles.forEach((file, idx) => {
+                    const item = document.createElement("div");
+                    item.className = "file-item";
+                    item.draggable = true;
+                    item.dataset.idx = idx;
+                    item.innerHTML = `<img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect width='120' height='120' fill='%232a2f3a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239aa0a8' font-size='12'%3ERAW%3C/text%3E%3C/svg%3E" alt="">
+      <span title="${file.name}">${file.name}</span>`;
+                    item.addEventListener("dragstart", e => {
+                        e.dataTransfer.setData("text/plain", idx);
+                        item.classList.add("dragging");
+                    });
+                    item.addEventListener("dragend", () => item.classList.remove("dragging"));
+                    item.addEventListener("dragover", e => e.preventDefault());
+                    item.addEventListener("drop", e => {
+                        e.preventDefault();
+                        const fromIdx = parseInt(e.dataTransfer.getData("text/plain"));
+                        const toIdx = parseInt(item.dataset.idx);
+                        if (fromIdx !== toIdx) {
+                            const [moved] = rawFiles.splice(fromIdx, 1);
+                            rawFiles.splice(toIdx, 0, moved);
+                            renderFileGrid();
+                        }
+                    });
+                    grid.appendChild(item);
+                });
             }
 
             wireDrop($("dropRaw"), $("rawInput"), $("rawName"), true, setRaw);
@@ -379,7 +462,7 @@
                 $("processBtn").disabled = true;
                 $("progressWrap").style.display = "block";
                 $("progressFill").style.width = "0%";
-                $("progressStatus").textContent = "Mengunggah berkas…";
+                $("progressStatus").textContent = "Uploading files…";
 
                 try {
                     const fd = new FormData();
@@ -390,7 +473,7 @@
 
                     const res = await fetch("/api/process", { method: "POST", body: fd });
                     const data = await res.json().catch(() => ({}));
-                    if (!res.ok) throw new Error(data.detail || `Kesalahan server (${res.status})`);
+                    if (!res.ok) throw new Error(data.detail || `Server error (${res.status})`);
 
                     pollJob(data.job_id);
                 } catch (e) {
@@ -404,13 +487,13 @@
                 while (true) {
                     try {
                         const res = await fetch(`/api/jobs/${jobId}`);
-                        if (!res.ok) throw new Error("Gagal mengambil status job");
+                        if (!res.ok) throw new Error("Failed to fetch job status");
                         const job = await res.json();
 
                         $("progressFill").style.width = job.progress + "%";
 
                         let statusText;
-                        if (job.status === "done") statusText = `Selesai — ${job.total_files} berkas diproses`;
+                        if (job.status === "done") statusText = `Done — ${job.total_files} files processed`;
                         else if (job.current_file)
                             statusText = `${job.status}: ${job.done_files + 1}/${job.total_files} — ${job.current_file}`;
                         else statusText = job.status;
@@ -421,7 +504,7 @@
                             return;
                         }
                         if (job.status === "failed") {
-                            throw new Error(job.message || "Pemrosesan gagal");
+                            throw new Error(job.message || "Processing failed");
                         }
                     } catch (e) {
                         showError(e.message);
@@ -458,8 +541,7 @@
                 $("inputArea").style.display = "none";
                 $("result").style.display = "block";
                 $("dlZip").href = `/files/${jobId}/all.zip`;
-                $("summary").textContent =
-                    `${outputs.length} foto selesai diproses. Geser tiap kartu untuk membandingkan.`;
+                $("summary").textContent = `${outputs.length} photos processed. Drag each card to compare.`;
 
                 const gallery = $("gallery");
                 gallery.innerHTML = "";
@@ -469,8 +551,8 @@
                     card.className = "card";
                     card.innerHTML = `
       <div class="card-compare">
-        <img class="after" alt="Sesudah" src="${out.preview_after}">
-        <img class="before" alt="Sebelum" src="${out.preview_before}">
+        <img class="after" alt="After" src="${out.preview_after}">
+        <img class="before" alt="Before" src="${out.preview_before}">
         <div class="divider"></div>
       </div>
       <div class="card-name" title="${out.filename}">${out.filename}</div>
@@ -487,8 +569,8 @@
             $("resetBtn").addEventListener("click", () => {
                 rawFiles = [];
                 cubeFile = null;
-                $("rawName").textContent = "Klik atau seret berkas .cr2 / .nef / .arw / .dng / …";
-                $("cubeName").textContent = "Klik atau seret berkas .cube";
+                $("rawName").textContent = "Click or drag .cr2 / .nef / .arw / .dng / … files";
+                $("cubeName").textContent = "Click or drag .cube file";
                 $("dropRaw").classList.remove("filled");
                 $("dropCube").classList.remove("filled");
                 $("rawInput").value = "";
@@ -501,6 +583,7 @@
                 $("inputArea").style.display = "block";
                 $("progressWrap").style.display = "none";
                 $("error").innerHTML = "";
+                $("fileList").style.display = "none";
             });
         </script>
     </body>

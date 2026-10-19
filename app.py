@@ -137,19 +137,19 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
                   colorspace: str = Form("srgb"),
                   intensity: float = Form(1.0)) -> dict:
     if not raw_files:
-        raise HTTPException(400, "Paling tidak satu berkas RAW diperlukan")
+        raise HTTPException(400, "At least one RAW file required")
     if not (cube.filename or "").lower().endswith(".cube"):
-        raise HTTPException(400, "Berkas LUT harus berformat .cube")
+        raise HTTPException(400, "LUT file must be .cube format")
     if colorspace not in ("srgb", "log"):
-        raise HTTPException(400, "Colorspace tidak valid")
+        raise HTTPException(400, "Invalid colorspace")
     if not (0.0 <= intensity <= 1.0):
-        raise HTTPException(400, "Intensitas harus antara 0.0 dan 1.0")
+        raise HTTPException(400, "Intensity must be between 0.0 and 1.0")
 
     raw_exts: list[str] = []
     for raw in raw_files:
         ext = Path(raw.filename or "").suffix.lower()
         if ext not in RAW_EXTENSIONS:
-            raise HTTPException(400, f"Format RAW tidak didukung: {ext or '(tanpa ekstensi)'}")
+            raise HTTPException(400, f"Unsupported RAW format: {ext or '(no extension)'}")
         raw_exts.append(ext)
 
     job = jobs.create_job()
@@ -169,7 +169,7 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
         raise
     except Exception as e:
         shutil.rmtree(job_dir, ignore_errors=True)
-        raise HTTPException(422, f"Gagal menyimpan unggahan: {e}")
+        raise HTTPException(422, f"Failed to save uploads: {e}")
 
     threading.Thread(
         target=_process_job_sync,
