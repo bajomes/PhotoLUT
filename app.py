@@ -58,6 +58,8 @@ def _save_outputs(graded: np.ndarray, before: np.ndarray,
     paths["tiff"] = out_dir / f"{stem}{suffix}_lut.tiff"
     tifffile.imwrite(paths["tiff"], tiff16, photometric="rgb", compression="deflate")
 
+    core.copy_exif_to_tiff(raw_path, paths["tiff"])
+
     jpeg8 = (graded * 255.0).round().astype(np.uint8)
     paths["jpeg"] = out_dir / f"{stem}{suffix}_lut.jpg"
     exif_data = core.extract_exif(raw_path)

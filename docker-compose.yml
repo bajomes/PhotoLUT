@@ -1,0 +1,8 @@
+services:
+    lutphoto:
+        build: .
+        ports:
+            - "8000:8000"
+        volumes:
+            - ./jobs:/app/jobs
+        restart: unless-stopped

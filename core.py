@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import rawpy
+import tifffile
 from PIL import Image
 
 MAX_JPEG_EXIF_BYTES = 65_500
@@ -145,6 +147,19 @@ def extract_exif(raw_path: Path) -> bytes | None:
             return blob if len(blob) <= MAX_JPEG_EXIF_BYTES else None
     except Exception:
         return None
+
+
+def copy_exif_to_tiff(raw_path: Path, tiff_path: Path) -> None:
+    try:
+        subprocess.run(
+            ["exiftool", "-TagsFromFile", str(raw_path), "-all:all",
+             "-m", "-overwrite_original", str(tiff_path)],
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+    except Exception:
+        pass
 
 
 def save_with_exif(image: Image.Image, path: Path,
