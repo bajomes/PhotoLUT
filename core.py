@@ -161,7 +161,7 @@ def decode_raw(path: Path, colorspace: str = "srgb") -> np.ndarray:
             output_color=rawpy.ColorSpace.sRGB,
             output_bps=16,
             no_auto_bright=True,
-            gamma=(2.222, 4.5),
+            gamma=(2.4, 12.92),
             fbdd_noise_reduction=rawpy.FBDDNoiseReductionMode.Off,
         )
     return rgb16.astype(np.float32) / 65535.0
