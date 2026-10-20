@@ -107,9 +107,9 @@ def _save_outputs(
 
 def _safe_output_stem(filename: str) -> str:
     """Return a portable filename stem without path components or unsafe characters."""
-    basename = filename.replace("\\\\", "/").rsplit("/", 1)[-1]
+    basename = filename.replace(chr(92), "/").rsplit("/", 1)[-1]
     stem = Path(basename).stem
-    safe = re.sub(r"[^\\w.-]+", "_", stem, flags=re.UNICODE).strip("._-")
+    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", stem).strip("._-")
     return (safe or "photo")[:80]
 
 
@@ -208,7 +208,12 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
 
     job = jobs.create_job()
     job_dir = WORK_DIR / job.id
-    job_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        job_dir.mkdir(parents=True, exist_ok=False)
+    except Exception as exc:
+        jobs.update_job(job.id, status=jobs.JobStatus.FAILED, message="Could not create job directory")
+        PROCESSING_SLOTS.release()
+        raise HTTPException(500, "Could not create processing job") from exc
 
     cube_path = job_dir / "input.cube"
     raw_paths: list[Path] = []
@@ -218,7 +223,7 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
             cube, cube_path, MAX_CUBE_BYTES, MAX_TOTAL_UPLOAD_BYTES
         )
         for i, (raw, ext) in enumerate(zip(raw_files, raw_exts)):
-            original = (raw.filename or f"photo_{i + 1}{ext}").replace("\\\\", "/").rsplit("/", 1)[-1]
+            original = (raw.filename or f"photo_{i + 1}{ext}").replace(chr(92), "/").rsplit("/", 1)[-1]
             p = job_dir / f"input_{i}{ext}"
             uploaded_size = await _save_upload(
                 raw, p, MAX_RAW_BYTES, MAX_TOTAL_UPLOAD_BYTES - total_uploaded
