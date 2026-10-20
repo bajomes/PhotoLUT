@@ -190,7 +190,7 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
     if colorspace != "srgb":
         raise HTTPException(
             400,
-            "Only sRGB / Rec.709 input is supported currently. Camera Log LUTs need "
+            "Only sRGB input is supported currently. Camera Log LUTs need "
             "a camera-specific transfer-function and gamut transform.",
         )
     if not (0.0 <= intensity <= 1.0):
