@@ -38,8 +38,8 @@ def creative_transform(red: np.ndarray, green: np.ndarray, blue: np.ndarray):
     # Mild warm look: gently lift red, slightly compress green, reduce blue.
     return (
         0.97 * red + 0.03,
-        0.96 * green + 0.01,
-        0.88 * blue + 0.02,
+        0.98 * green,
+        0.88 * blue,
     )
 
 
