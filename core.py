@@ -151,7 +151,7 @@ def decode_raw(path: Path, colorspace: str = "srgb") -> np.ndarray:
     """Decode RAW to predictable 16-bit sRGB. Camera-log modes need real transforms."""
     if colorspace != "srgb":
         raise ValueError(
-            "Only sRGB / Rec.709 input is supported currently. Camera Log LUTs require "
+            "Only sRGB input is supported currently. Camera Log LUTs require "
             "a camera-specific transfer-function and gamut transform."
         )
 
