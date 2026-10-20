@@ -141,7 +141,7 @@ def apply_lut(image: np.ndarray, lut: CubeLUT) -> np.ndarray:
     c00 = c000 + fr * (c001 - c000)
     c01 = c010 + fr * (c011 - c010)
     c10 = c100 + fr * (c101 - c100)
-    c11 = c110 + fr * (c111 - c101)
+    c11 = c110 + fr * (c111 - c110)
     c0 = c00 + fg * (c01 - c00)
     c1 = c10 + fg * (c11 - c10)
     result = c0 + fb * (c1 - c0)
