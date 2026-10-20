@@ -101,3 +101,39 @@ def test_rejects_invalid_image_shape(tmp_path):
 def test_log_mode_is_not_misrepresented_as_supported(tmp_path):
     with pytest.raises(ValueError, match="camera-specific"):
         core.decode_raw(tmp_path / "unused.nef", colorspace="log")
+
+
+
+def test_metadata_copy_keeps_rendered_color_space_and_orientation(tmp_path, monkeypatch):
+    source = tmp_path / "source.nef"
+    output = tmp_path / "rendered.jpg"
+    captured = {}
+
+    class Result:
+        returncode = 0
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return Result()
+
+    monkeypatch.setattr(core.subprocess, "run", fake_run)
+
+    assert core.copy_metadata(source, output) is True
+    command = captured["command"]
+    assert "-EXIF:All" in command
+    assert "-XMP:All" in command
+    assert "-IPTC:All" in command
+    assert "-all:all" not in command
+    assert "-Orientation#=1" in command
+    assert "-ColorSpace#=1" in command
+    assert str(output) == command[-1]
+
+
+def test_metadata_copy_reports_exiftool_failure(tmp_path, monkeypatch):
+    class Result:
+        returncode = 2
+
+    monkeypatch.setattr(core.subprocess, "run", lambda *_args, **_kwargs: Result())
+
+    assert core.copy_metadata(tmp_path / "source.nef", tmp_path / "rendered.jpg") is False
