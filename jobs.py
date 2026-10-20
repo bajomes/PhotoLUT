@@ -1,4 +1,4 @@
-"""Manajemen state job dan thread pembersihan otomatis."""
+"""Thread-safe job state and terminal-job cleanup."""
 from __future__ import annotations
 
 import shutil
@@ -19,6 +19,9 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
+_TERMINAL_STATUSES = {JobStatus.DONE, JobStatus.FAILED}
+
+
 @dataclass
 class JobState:
     id: str
@@ -30,6 +33,7 @@ class JobState:
     message: str = ""
     outputs: list[dict] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
+    finished_at: float | None = None
 
 
 _jobs: dict[str, JobState] = {}
@@ -50,29 +54,58 @@ def get_job(job_id: str) -> JobState | None:
 
 def update_job(job_id: str, **kwargs) -> None:
     with _lock:
-        if job_id in _jobs:
-            for k, v in kwargs.items():
-                setattr(_jobs[job_id], k, v)
+        state = _jobs.get(job_id)
+        if state is None:
+            return
+
+        for key, value in kwargs.items():
+            setattr(state, key, value)
+
+        if state.status in _TERMINAL_STATUSES:
+            if state.finished_at is None:
+                state.finished_at = time.time()
+        else:
+            state.finished_at = None
+
+
+def _cleanup_once(work_dir: Path, max_age: int, now: float | None = None) -> list[str]:
+    """Remove only completed/failed jobs whose retention period has elapsed.
+
+    Active jobs are never removed just because they have been running longer
+    than max_age. Registry entries are removed under the lock before their
+    directories are deleted, avoiding a race with status updates.
+    """
+    now = time.time() if now is None else now
+    with _lock:
+        expired = [
+            job_id
+            for job_id, state in _jobs.items()
+            if state.status in _TERMINAL_STATUSES
+            and state.finished_at is not None
+            and now - state.finished_at > max_age
+        ]
+        for job_id in expired:
+            _jobs.pop(job_id, None)
+
+    for job_id in expired:
+        shutil.rmtree(work_dir / job_id, ignore_errors=True)
+    return expired
 
 
 def _cleanup_loop(work_dir: Path, max_age: int, interval: int) -> None:
     while True:
         time.sleep(interval)
-        now = time.time()
-        to_delete: list[str] = []
-        with _lock:
-            for jid, state in _jobs.items():
-                if now - state.created_at > max_age:
-                    to_delete.append(jid)
-        for jid in to_delete:
-            d = work_dir / jid
-            if d.exists():
-                shutil.rmtree(d, ignore_errors=True)
-            with _lock:
-                _jobs.pop(jid, None)
+        _cleanup_once(work_dir, max_age)
 
 
 def start_cleanup(work_dir: Path, max_age: int = 3600, interval: int = 600) -> None:
-    """Mulai thread daemon pembersih. Default: bersihkan job >1 jam tiap 10 menit."""
-    t = threading.Thread(target=_cleanup_loop, args=(work_dir, max_age, interval), daemon=True)
+    """Start the daemon cleanup thread (default: terminal jobs retained for 1 hour)."""
+    if max_age <= 0 or interval <= 0:
+        raise ValueError("max_age and interval must be positive")
+    t = threading.Thread(
+        target=_cleanup_loop,
+        args=(work_dir, max_age, interval),
+        daemon=True,
+        name="photolut-job-cleanup",
+    )
     t.start()
