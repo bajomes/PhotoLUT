@@ -75,23 +75,22 @@ def parse_cube(path: Path) -> CubeLUT:
                     domain_max = domain
                 continue
 
-            if re.fullmatch(r"[0-9eE+.\- ]+", line):
-                if size is None:
-                    raise ValueError(f"{path.name}:{lineno}: LUT_3D_SIZE must precede LUT data")
-                parts = line.split()
-                if len(parts) != 3:
-                    raise ValueError(f"{path.name}:{lineno}: each LUT entry must contain three values")
-                expected = size**3 * 3
-                if len(values) + 3 > expected:
-                    raise ValueError(f"{path.name}:{lineno}: more values than declared LUT size")
-                try:
-                    values.extend(float(v) for v in parts)
-                except ValueError as exc:
-                    raise ValueError(f"{path.name}:{lineno}: invalid LUT value") from exc
-                data_started = True
-                continue
+            parts = line.split()
+            try:
+                numeric_values = [float(value) for value in parts]
+            except ValueError as exc:
+                raise ValueError(f"{path.name}:{lineno}: unsupported .cube directive: {line!r}") from exc
 
-            raise ValueError(f"{path.name}:{lineno}: unsupported .cube directive: {line!r}")
+            if size is None:
+                raise ValueError(f"{path.name}:{lineno}: LUT_3D_SIZE must precede LUT data")
+            if len(parts) != 3:
+                raise ValueError(f"{path.name}:{lineno}: each LUT entry must contain three values")
+            expected = size**3 * 3
+            if len(values) + 3 > expected:
+                raise ValueError(f"{path.name}:{lineno}: more values than declared LUT size")
+            values.extend(numeric_values)
+            data_started = True
+            continue
 
     if size is None:
         raise ValueError(f"{path.name}: missing LUT_3D_SIZE")
