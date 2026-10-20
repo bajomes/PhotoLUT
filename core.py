@@ -181,15 +181,19 @@ def srgb_icc_profile() -> bytes:
 
 
 def copy_metadata(raw_path: Path, output_path: Path) -> bool:
-    """Copy source metadata with ExifTool; return False if metadata copy fails."""
+    """Copy descriptive metadata without replacing output ICC profiles or pixel orientation."""
     try:
         result = subprocess.run(
             [
                 "exiftool",
                 "-TagsFromFile", str(raw_path),
-                "-all:all",
+                "-EXIF:All",
+                "-XMP:All",
+                "-IPTC:All",
                 "-m",
                 "-overwrite_original",
+                "-Orientation#=1",
+                "-ColorSpace#=1",
                 str(output_path),
             ],
             capture_output=True,
