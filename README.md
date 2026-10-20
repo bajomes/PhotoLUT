@@ -58,6 +58,6 @@ pip install pytest
 pytest -q
 ```
 
-On Windows PowerShell, activate the environment with `.venv\\Scripts\\Activate.ps1`.
+On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1`.
 
 Automated tests cover LUT parsing, identity and channel-order behavior, interpolation, invalid LUT data, intensity blending, output profiles, and job-cleanup behavior. RAW-file integration tests should also be run with sample files from each supported camera family before a release.
