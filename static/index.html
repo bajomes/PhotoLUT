@@ -101,6 +101,18 @@
                 accent-color: var(--accent);
                 margin-top: 4px;
             }
+            .hint {
+                color: var(--muted);
+                font-size: 0.82rem;
+                line-height: 1.5;
+                margin: 8px 0 0;
+            }
+            .metadata-warning {
+                color: #ffd28a;
+                font-size: 0.82rem;
+                line-height: 1.45;
+                margin: 8px 0;
+            }
             .file-list {
                 margin-top: 20px;
             }
@@ -347,9 +359,9 @@
                 <div class="options">
                     <label for="colorspace">3. Input Color Space</label>
                     <select id="colorspace">
-                        <option value="srgb">sRGB / Rec.709 (default, for common creative LUTs)</option>
-                        <option value="log">Log (for LUTs designed for S-Log, V-Log, C-Log)</option>
+                        <option value="srgb">sRGB (for compatible display-referred creative LUTs)</option>
                     </select>
+                    <p class="hint">Camera Log LUTs are not supported yet. Log workflows need a camera-specific transfer-function and gamut transform; selecting a generic Log mode would produce unreliable color.</p>
                     <label for="intensity">4. LUT Intensity: <span id="intensityVal">100%</span></label>
                     <input type="range" id="intensity" min="0" max="100" value="100" />
                 </div>
@@ -424,8 +436,11 @@
                     item.className = "file-item";
                     item.draggable = true;
                     item.dataset.idx = idx;
-                    item.innerHTML = `<img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect width='120' height='120' fill='%232a2f3a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239aa0a8' font-size='12'%3ERAW%3C/text%3E%3C/svg%3E" alt="">
-      <span title="${file.name}">${file.name}</span>`;
+                    item.innerHTML = `<img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect width='120' height='120' fill='%232a2f3a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239aa0a8' font-size='12'%3ERAW%3C/text%3E%3C/svg%3E" alt="">`;
+                    const label = document.createElement("span");
+                    label.textContent = file.name;
+                    label.title = file.name;
+                    item.appendChild(label);
                     item.addEventListener("dragstart", e => {
                         e.dataTransfer.setData("text/plain", idx);
                         item.classList.add("dragging");
@@ -454,7 +469,10 @@
             });
 
             function showError(msg) {
-                $("error").innerHTML = `<div class="errbox">${msg}</div>`;
+                const box = document.createElement("div");
+                box.className = "errbox";
+                box.textContent = String(msg ?? "An unexpected error occurred.");
+                $("error").replaceChildren(box);
             }
 
             $("processBtn").addEventListener("click", async () => {
@@ -555,12 +573,21 @@
         <img class="before" alt="Before" src="${out.preview_before}">
         <div class="divider"></div>
       </div>
-      <div class="card-name" title="${out.filename}">${out.filename}</div>
+      <div class="card-name"></div>
       <div class="card-downloads">
         <a href="${out.download_tiff}" download class="tiff-btn">TIFF 16-bit</a>
         <a href="${out.download_jpeg}" download class="jpeg-btn">JPEG</a>
       </div>
     `;
+                    const name = card.querySelector(".card-name");
+                    name.textContent = out.filename;
+                    name.title = out.filename;
+                    if (!out.metadata_preserved) {
+                        const warning = document.createElement("p");
+                        warning.className = "metadata-warning";
+                        warning.textContent = "Some camera metadata could not be copied. Check that ExifTool is installed and supports this RAW format.";
+                        card.appendChild(warning);
+                    }
                     gallery.appendChild(card);
                     wireCompare(card.querySelector(".card-compare"));
                 });

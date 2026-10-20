@@ -1,3 +1,4 @@
+"""RAW decoding, .cube LUT parsing, and color processing helpers."""
 from __future__ import annotations
 
 import re
@@ -7,14 +8,16 @@ from pathlib import Path
 
 import numpy as np
 import rawpy
-import tifffile
-from PIL import Image
+from PIL import ImageCms
 
-MAX_JPEG_EXIF_BYTES = 65_500
+MAX_CUBE_BYTES = 10 * 1024 * 1024
+MAX_LUT_SIZE = 128
 
 
 @dataclass(frozen=True)
 class CubeLUT:
+    """A 3D .cube LUT, indexed in [blue, green, red] order."""
+
     size: int
     domain_min: np.ndarray
     domain_max: np.ndarray
@@ -22,45 +25,101 @@ class CubeLUT:
 
 
 def parse_cube(path: Path) -> CubeLUT:
+    """Parse and validate a 3D .cube file before processing any image."""
+    if path.stat().st_size > MAX_CUBE_BYTES:
+        raise ValueError(f"{path.name}: LUT file exceeds the 10 MiB limit")
+
     size: int | None = None
     domain_min = np.array([0.0, 0.0, 0.0], dtype=np.float32)
     domain_max = np.array([1.0, 1.0, 1.0], dtype=np.float32)
     values: list[float] = []
+    data_started = False
 
-    with path.open("r", encoding="utf-8", errors="replace") as f:
-        for lineno, line in enumerate(f, 1):
+    with path.open("r", encoding="utf-8", errors="replace") as stream:
+        for lineno, line in enumerate(stream, 1):
             line = line.strip()
-            if not line or line.startswith("#") or line.upper().startswith("TITLE"):
+            if not line or line.startswith("#"):
                 continue
-            if line.upper().startswith("LUT_3D_SIZE"):
-                size = int(line.split()[1])
+
+            upper = line.upper()
+            if upper.startswith("TITLE"):
                 continue
-            if line.upper().startswith("DOMAIN_MIN"):
-                domain_min = np.array(line.split()[1:4], dtype=np.float32)
+            if upper.startswith("LUT_3D_SIZE"):
+                parts = line.split()
+                if data_started or size is not None or len(parts) != 2:
+                    raise ValueError(f"{path.name}:{lineno}: invalid or duplicate LUT_3D_SIZE")
+                try:
+                    size = int(parts[1])
+                except ValueError as exc:
+                    raise ValueError(f"{path.name}:{lineno}: invalid LUT_3D_SIZE") from exc
+                if not 2 <= size <= MAX_LUT_SIZE:
+                    raise ValueError(
+                        f"{path.name}:{lineno}: LUT_3D_SIZE must be between 2 and {MAX_LUT_SIZE}"
+                    )
                 continue
-            if line.upper().startswith("DOMAIN_MAX"):
-                domain_max = np.array(line.split()[1:4], dtype=np.float32)
+            if upper.startswith("DOMAIN_MIN") or upper.startswith("DOMAIN_MAX"):
+                if data_started:
+                    raise ValueError(f"{path.name}:{lineno}: domain declarations must precede LUT data")
+                parts = line.split()
+                if len(parts) != 4:
+                    raise ValueError(f"{path.name}:{lineno}: expected three domain values")
+                try:
+                    domain = np.asarray([float(v) for v in parts[1:]], dtype=np.float32)
+                except ValueError as exc:
+                    raise ValueError(f"{path.name}:{lineno}: invalid domain value") from exc
+                if not np.all(np.isfinite(domain)):
+                    raise ValueError(f"{path.name}:{lineno}: domain values must be finite")
+                if upper.startswith("DOMAIN_MIN"):
+                    domain_min = domain
+                else:
+                    domain_max = domain
                 continue
-            if re.match(r"^[0-9eE+.\- ]+$", line):
-                values.extend(float(v) for v in line.split())
-                continue
-            raise ValueError(f"{path.name}:{lineno}: baris tak dikenal: {line!r}")
+
+            parts = line.split()
+            try:
+                numeric_values = [float(value) for value in parts]
+            except ValueError as exc:
+                raise ValueError(f"{path.name}:{lineno}: unsupported .cube directive: {line!r}") from exc
+
+            if size is None:
+                raise ValueError(f"{path.name}:{lineno}: LUT_3D_SIZE must precede LUT data")
+            if len(parts) != 3:
+                raise ValueError(f"{path.name}:{lineno}: each LUT entry must contain three values")
+            expected = size**3 * 3
+            if len(values) + 3 > expected:
+                raise ValueError(f"{path.name}:{lineno}: more values than declared LUT size")
+            values.extend(numeric_values)
+            data_started = True
+            continue
 
     if size is None:
-        raise ValueError(f"{path.name}: tidak ada LUT_3D_SIZE")
-    if not 2 <= size <= 256:
-        raise ValueError(f"{path.name}: LUT_3D_SIZE {size} di luar rentang wajar (2-256)")
+        raise ValueError(f"{path.name}: missing LUT_3D_SIZE")
+    if not np.all(np.isfinite(domain_min)) or not np.all(np.isfinite(domain_max)):
+        raise ValueError(f"{path.name}: domain values must be finite")
+    if np.any(domain_max <= domain_min):
+        raise ValueError(f"{path.name}: each DOMAIN_MAX value must exceed DOMAIN_MIN")
     expected = size**3 * 3
     if len(values) != expected:
-        raise ValueError(f"{path.name}: jumlah nilai {len(values)}, diharapkan {expected}")
-    if np.any(domain_max <= domain_min):
-        raise ValueError(f"{path.name}: DOMAIN_MAX harus lebih besar dari DOMAIN_MIN")
+        raise ValueError(
+            f"{path.name}: found {len(values)} LUT values; expected exactly {expected}"
+        )
 
-    table = np.array(values, dtype=np.float32).reshape(size, size, size, 3)
+    table_values = np.asarray(values, dtype=np.float32)
+    if not np.all(np.isfinite(table_values)):
+        raise ValueError(f"{path.name}: LUT values must all be finite")
+    # .cube data changes red fastest, then green, then blue. The reshaped
+    # dimensions are therefore [blue, green, red, output-channel].
+    table = table_values.reshape(size, size, size, 3)
     return CubeLUT(size=size, domain_min=domain_min, domain_max=domain_max, table=table)
 
 
 def apply_lut(image: np.ndarray, lut: CubeLUT) -> np.ndarray:
+    """Apply a validated 3D LUT to an RGB float image in [0, 1]."""
+    if image.ndim != 3 or image.shape[-1] != 3:
+        raise ValueError("image must have shape (height, width, 3)")
+    if not np.issubdtype(image.dtype, np.number) or not np.all(np.isfinite(image)):
+        raise ValueError("image must contain finite numeric RGB values")
+
     img = np.clip(image, lut.domain_min, lut.domain_max)
     norm = (img - lut.domain_min) / (lut.domain_max - lut.domain_min) * (lut.size - 1)
 
@@ -84,90 +143,63 @@ def apply_lut(image: np.ndarray, lut: CubeLUT) -> np.ndarray:
     c11 = c110 + fr * (c111 - c110)
     c0 = c00 + fg * (c01 - c00)
     c1 = c10 + fg * (c11 - c10)
-    return np.clip(c0 + fb * (c1 - c0), 0.0, 1.0).astype(np.float32)
+    result = c0 + fb * (c1 - c0)
+    return np.clip(result, 0.0, 1.0).astype(np.float32)
 
 
 def decode_raw(path: Path, colorspace: str = "srgb") -> np.ndarray:
+    """Decode RAW to predictable 16-bit sRGB. Camera-log modes need real transforms."""
+    if colorspace != "srgb":
+        raise ValueError(
+            "Only sRGB input is supported currently. Camera Log LUTs require "
+            "a camera-specific transfer-function and gamut transform."
+        )
+
     with rawpy.imread(str(path)) as raw:
-        if colorspace == "log":
-            rgb16 = raw.postprocess(
-                use_camera_wb=True,
-                output_color=rawpy.ColorSpace.sRGB,
-                output_bps=16,
-                no_auto_bright=False,
-                gamma=(1.0, 1.0),
-                fbdd_noise_reduction=rawpy.FBDDNoiseReductionMode.Off,
-            )
-            img = rgb16.astype(np.float32) / 65535.0
-            return np.power(np.maximum(img, 1e-6), 1.0 / 2.4).astype(np.float32)
-        else:
-            rgb16 = raw.postprocess(
-                use_camera_wb=True,
-                output_color=rawpy.ColorSpace.sRGB,
-                output_bps=16,
-                no_auto_bright=False,
-                fbdd_noise_reduction=rawpy.FBDDNoiseReductionMode.Off,
-            )
-            return rgb16.astype(np.float32) / 65535.0
+        rgb16 = raw.postprocess(
+            use_camera_wb=True,
+            output_color=rawpy.ColorSpace.sRGB,
+            output_bps=16,
+            no_auto_bright=True,
+            gamma=(2.4, 12.92),
+            fbdd_noise_reduction=rawpy.FBDDNoiseReductionMode.Off,
+        )
+    return rgb16.astype(np.float32) / 65535.0
 
 
 def blend_intensity(graded: np.ndarray, original: np.ndarray, intensity: float) -> np.ndarray:
+    if not 0.0 <= intensity <= 1.0:
+        raise ValueError("intensity must be between 0.0 and 1.0")
+    if graded.shape != original.shape:
+        raise ValueError("graded and original images must have identical shapes")
     return np.clip(graded * intensity + original * (1.0 - intensity), 0.0, 1.0).astype(np.float32)
 
 
-def extract_exif(raw_path: Path) -> bytes | None:
-    WHITELIST_IFD0 = {0x010F, 0x0110, 0x0112, 0x0132, 0x8769}
-    WHITELIST_EXIF = {0x829A, 0x829D, 0x8827, 0x9000, 0x9003, 0x9004, 0x920A}
+def srgb_icc_profile() -> bytes:
+    """Return a standard sRGB ICC profile for embedding in output files."""
+    return ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
 
+
+def copy_metadata(raw_path: Path, output_path: Path) -> bool:
+    """Copy descriptive metadata without replacing output ICC profiles or pixel orientation."""
     try:
-        with Image.open(raw_path) as im:
-            original_exif = im.getexif()
-            if not original_exif:
-                return None
-
-            new_exif = Image.Exif()
-
-            for tag_id in WHITELIST_IFD0:
-                if tag_id in original_exif and tag_id != 0x8769:
-                    new_exif[tag_id] = original_exif[tag_id]
-
-            try:
-                exif_ifd = original_exif.get_ifd(0x8769)
-                if exif_ifd:
-                    new_exif_ifd = {}
-                    for tag_id in WHITELIST_EXIF:
-                        if tag_id in exif_ifd:
-                            new_exif_ifd[tag_id] = exif_ifd[tag_id]
-                    if new_exif_ifd:
-                        new_exif[0x8769] = new_exif_ifd
-            except Exception:
-                pass
-
-            blob = new_exif.tobytes()
-            return blob if len(blob) <= MAX_JPEG_EXIF_BYTES else None
-    except Exception:
-        return None
-
-
-def copy_exif_to_tiff(raw_path: Path, tiff_path: Path) -> None:
-    try:
-        subprocess.run(
-            ["exiftool", "-TagsFromFile", str(raw_path), "-all:all",
-             "-m", "-overwrite_original", str(tiff_path)],
+        result = subprocess.run(
+            [
+                "exiftool",
+                "-TagsFromFile", str(raw_path),
+                "-EXIF:All",
+                "-XMP:All",
+                "-IPTC:All",
+                "-m",
+                "-overwrite_original",
+                "-Orientation#=1",
+                "-ColorSpace#=1",
+                str(output_path),
+            ],
             capture_output=True,
             timeout=30,
             check=False,
         )
-    except Exception:
-        pass
-
-
-def save_with_exif(image: Image.Image, path: Path,
-                   exif: bytes | None = None, **save_kwargs) -> None:
-    if exif:
-        try:
-            image.save(path, exif=exif, **save_kwargs)
-            return
-        except ValueError:
-            pass
-    image.save(path, **save_kwargs)
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
