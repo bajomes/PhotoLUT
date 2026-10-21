@@ -1,6 +1,7 @@
 """Thread-safe job state and terminal-job cleanup."""
 from __future__ import annotations
 
+import re
 import shutil
 import threading
 import time
@@ -8,6 +9,8 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+
+_JOB_DIR_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
 
 class JobStatus(str, Enum):
@@ -74,6 +77,9 @@ def _cleanup_once(work_dir: Path, max_age: int, now: float | None = None) -> lis
     Active jobs are never removed just because they have been running longer
     than max_age. Registry entries are removed under the lock before their
     directories are deleted, avoiding a race with status updates.
+
+    Directories left behind by a previous process (after a restart or crash)
+    are removed too; see _remove_orphan_job_dirs.
     """
     now = time.time() if now is None else now
     with _lock:
@@ -84,12 +90,52 @@ def _cleanup_once(work_dir: Path, max_age: int, now: float | None = None) -> lis
             and state.finished_at is not None
             and now - state.finished_at > max_age
         ]
+        known_ids = set(_jobs)
         for job_id in expired:
             _jobs.pop(job_id, None)
 
     for job_id in expired:
         shutil.rmtree(work_dir / job_id, ignore_errors=True)
-    return expired
+
+    orphans = _remove_orphan_job_dirs(work_dir, known_ids, max_age, now)
+    return expired + orphans
+
+
+def _remove_orphan_job_dirs(
+    work_dir: Path, known_ids: set[str], max_age: int, now: float
+) -> list[str]:
+    """Delete stale job directories that have no registry entry.
+
+    Job state lives only in memory, so a restart or crash leaves directories
+    behind that the registry-based cleanup above can never see. Such orphans
+    are removed once their directory mtime exceeds the retention period.
+
+    The age check also protects freshly created jobs: a job directory is
+    always created after its registry entry, so a directory missing from
+    known_ids is either an old orphan or brand new, and only the old ones
+    pass the age check. Only 32-character lowercase-hex directory names are
+    considered, so unrelated files in the work directory are never touched.
+    """
+    removed: list[str] = []
+    if not work_dir.is_dir():
+        return removed
+    try:
+        entries = list(work_dir.iterdir())
+    except OSError:
+        return removed
+    for entry in entries:
+        if not _JOB_DIR_PATTERN.match(entry.name) or entry.name in known_ids:
+            continue
+        try:
+            if not entry.is_dir():
+                continue
+            age = now - entry.stat().st_mtime
+        except OSError:
+            continue
+        if age > max_age:
+            shutil.rmtree(entry, ignore_errors=True)
+            removed.append(entry.name)
+    return removed
 
 
 def _cleanup_loop(work_dir: Path, max_age: int, interval: int) -> None:
