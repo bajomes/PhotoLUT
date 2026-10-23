@@ -260,10 +260,10 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
 @app.get("/api/jobs/{job_id}")
 def job_status(job_id: str) -> dict:
     if not job_id.isalnum():
-        raise HTTPException(400, "ID tidak valid")
+        raise HTTPException(400, "Invalid job ID")
     job = jobs.get_job(job_id)
     if not job:
-        raise HTTPException(404, "Job tidak ditemukan")
+        raise HTTPException(404, "Job not found")
     return {
         "id": job.id,
         "status": job.status.value,
@@ -279,10 +279,10 @@ def job_status(job_id: str) -> dict:
 @app.get("/files/{job_id}/all.zip")
 def download_zip(job_id: str) -> FileResponse:
     if not job_id.isalnum():
-        raise HTTPException(400, "ID tidak valid")
+        raise HTTPException(400, "Invalid job ID")
     job = jobs.get_job(job_id)
     if not job or job.status != jobs.JobStatus.DONE:
-        raise HTTPException(404, "Job belum siap")
+        raise HTTPException(404, "Job results are not ready yet")
 
     out_dir = (WORK_DIR / job_id / "out").resolve()
     zip_path = out_dir / "all.zip"
@@ -304,11 +304,11 @@ def download_zip(job_id: str) -> FileResponse:
 @app.get("/files/{job_id}/{name}")
 def get_file(job_id: str, name: str) -> FileResponse:
     if not job_id.isalnum() or ".." in name or "/" in name:
-        raise HTTPException(400, "Permintaan tidak valid")
+        raise HTTPException(400, "Invalid request")
     out_dir = (WORK_DIR / job_id / "out").resolve()
     path = (out_dir / name).resolve()
     if path.parent != out_dir or not path.is_file():
-        raise HTTPException(404, "Berkas tidak ditemukan")
+        raise HTTPException(404, "File not found")
     return FileResponse(path, filename=name)
 
 
