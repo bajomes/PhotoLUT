@@ -14,7 +14,11 @@ import core
 
 
 RAW_FIXTURE_DIR = Path(os.environ.get("PHOTOLUT_TEST_RAW_DIR", "test-data"))
-RAW_FIXTURES = ("iss030e122639.NEF", "iss042e297200.NEF")
+RAW_FIXTURES = (
+    "iss030e122639.NEF",
+    "iss042e297200.NEF",
+    "Canon-5D-Mark-IV.CR2",
+)
 
 
 def write_cube(path: Path, transform) -> Path:

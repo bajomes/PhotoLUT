@@ -35,6 +35,8 @@ jobs:
             https://raw.githubusercontent.com/letmaik/rawpy/a39c2e7a44911889c3360891012f862f904ba551/test/iss030e122639.NEF
           curl --fail --location --retry 3 --output test-data/iss042e297200.NEF \
             https://raw.githubusercontent.com/letmaik/rawpy/a39c2e7a44911889c3360891012f862f904ba551/test/iss042e297200.NEF
+          curl --fail --location --retry 3 --output test-data/Canon-5D-Mark-IV.CR2 https://github.com/tellodaniel/revelraw-sample-raw-files/releases/download/v1/Canon-5D-Mark-IV.CR2
+          echo "02b23f9cc6dc4c99fb39aa4d1f65ac227804d06461ac1bd0f842aa2f3beb8fe4  test-data/Canon-5D-Mark-IV.CR2" | sha256sum -c -
       - name: Run tests
         env:
           PHOTOLUT_TEST_RAW_DIR: test-data
