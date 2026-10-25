@@ -28,7 +28,7 @@ def make_cube() -> bytes:
         for green in (0.0, 1.0):
             for red in (0.0, 1.0):
                 rows.append(f"{red} {green} {blue}")
-    return ("LUT_3D_SIZE 2\\n" + "\\n".join(rows) + "\\n").encode("utf-8")
+    return ("LUT_3D_SIZE 2\n" + "\n".join(rows) + "\n").encode("utf-8")
 
 
 def post_process(
