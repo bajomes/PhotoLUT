@@ -18,12 +18,18 @@ docker compose down
 
 ## Current capabilities
 
-- Batch processing of supported RAW formats: CR2, CR3, NEF, ARW, SRF, SR2, DNG, ORF, RW2, RAF, PEF, and 3FR.
+- Recognized RAW extensions: CR2, CR3, NEF, ARW, SRF, SR2, DNG, ORF, RW2, RAF, PEF, and 3FR. Successful decoding depends on the exact camera model being supported by rawpy/LibRaw.
 - 3D `.cube` LUTs, trilinear interpolation, and adjustable LUT intensity.
 - 16-bit TIFF and high-quality JPEG exports.
 - Before/after comparison slider, job progress, and ZIP download.
 - sRGB ICC profile embedding and best-effort metadata copying with ExifTool.
 - Original input filenames are retained for the result cards; output filenames are normalized for portable filesystem use.
+
+## Verification coverage
+
+GitHub Actions tests real RAW decoding and exports with two Nikon NEF samples and one Canon CR2 sample. The integration checks cover identity and creative LUTs, 16-bit TIFF pixels, JPEG output, embedded sRGB profiles, orientation, and selected camera metadata. The CI suite does not verify every listed extension or every camera model; validate samples from each target camera before relying on it for production work. A separate CI job builds the Docker image and smoke-tests the web UI and OpenAPI schema.
+
+When running `pytest -q` locally without sample files in `test-data/`, the real-RAW integration cases are skipped. Set `PHOTOLUT_TEST_RAW_DIR` to a directory containing the three fixture files to run them locally.
 
 ## Input color space
 
@@ -60,4 +66,9 @@ pytest -q
 
 On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1`.
 
-Automated tests cover LUT parsing, identity and channel-order behavior, interpolation, invalid LUT data, intensity blending, output profiles, and job-cleanup behavior. RAW-file integration tests should also be run with sample files from each supported camera family before a release.
+Automated tests cover LUT parsing, interpolation, malformed LUT rejection, upload validation and limits, API processing and export, output profiles, metadata behavior, and job cleanup. Real-RAW CI fixtures currently cover Nikon NEF and Canon CR2; other camera models still need representative validation.
+
+
+## License
+
+PhotoLUT is distributed under the MIT License. See [LICENSE](LICENSE).
