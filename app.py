@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="LUTPhoto", lifespan=lifespan)
+app = FastAPI(title="PhotoLUT", description="Apply 3D .cube LUTs to RAW photos locally.", lifespan=lifespan)
 
 
 async def _save_upload(
