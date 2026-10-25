@@ -2,7 +2,7 @@ name: tests
 
 on:
   push:
-    branches: [main, "fix/**", "test/**"]
+    branches: [main, "fix/**", "test/**", "release/**"]
   pull_request:
     branches: [main]
 
@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           cache: pip
@@ -41,3 +41,39 @@ jobs:
         env:
           PHOTOLUT_TEST_RAW_DIR: test-data
         run: pytest -q
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build Docker image
+        run: docker build --tag photolut:ci .
+      - name: Start container
+        run: docker run --detach --name photolut-ci --publish 127.0.0.1:8000:8000 photolut:ci
+      - name: Smoke-test web UI and API schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker logs photolut-ci || true
+            docker rm -f photolut-ci >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8000/ --output /tmp/photolut-index.html; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "PhotoLUT did not start or serve its homepage."
+            exit 1
+          fi
+
+          grep -q '<h1>PhotoLUT</h1>' /tmp/photolut-index.html
+          curl --fail --silent http://127.0.0.1:8000/openapi.json |
+            python -c 'import json, sys; assert json.load(sys.stdin)["info"]["title"] == "PhotoLUT"'
