@@ -1,5 +1,9 @@
 name: tests
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main, "fix/**", "test/**", "release/**"]
@@ -40,6 +44,7 @@ jobs:
       - name: Run tests
         env:
           PHOTOLUT_TEST_RAW_DIR: test-data
+          PHOTOLUT_CONCURRENCY: "1"
         run: pytest -q
 
   docker-smoke:

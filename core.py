@@ -113,13 +113,8 @@ def parse_cube(path: Path) -> CubeLUT:
     return CubeLUT(size=size, domain_min=domain_min, domain_max=domain_max, table=table)
 
 
-def apply_lut(image: np.ndarray, lut: CubeLUT) -> np.ndarray:
-    """Apply a validated 3D LUT to an RGB float image in [0, 1]."""
-    if image.ndim != 3 or image.shape[-1] != 3:
-        raise ValueError("image must have shape (height, width, 3)")
-    if not np.issubdtype(image.dtype, np.number) or not np.all(np.isfinite(image)):
-        raise ValueError("image must contain finite numeric RGB values")
-
+def _apply_lut_tile(image: np.ndarray, lut: CubeLUT) -> np.ndarray:
+    """Apply LUT interpolation to one tile; locals are released after each tile."""
     img = np.clip(image, lut.domain_min, lut.domain_max)
     norm = (img - lut.domain_min) / (lut.domain_max - lut.domain_min) * (lut.size - 1)
 
@@ -143,9 +138,37 @@ def apply_lut(image: np.ndarray, lut: CubeLUT) -> np.ndarray:
     c11 = c110 + fr * (c111 - c110)
     c0 = c00 + fg * (c01 - c00)
     c1 = c10 + fg * (c11 - c10)
-    result = c0 + fb * (c1 - c0)
-    return np.clip(result, 0.0, 1.0).astype(np.float32)
+    return np.clip(c0 + fb * (c1 - c0), 0.0, 1.0).astype(np.float32)
 
+
+def apply_lut(image: np.ndarray, lut: CubeLUT, tile_size: int = 512) -> np.ndarray:
+    """Apply a 3D LUT using bounded-memory tiles.
+
+    The lookup is point-wise, so each tile uses the same arithmetic as the
+    full-frame implementation. The returned output still occupies one
+    float32 RGB image; interpolation temporaries are limited to one tile.
+    """
+    if image.ndim != 3 or image.shape[-1] != 3:
+        raise ValueError("image must have shape (height, width, 3)")
+    if not np.issubdtype(image.dtype, np.number):
+        raise ValueError("image must contain finite numeric RGB values")
+    if not isinstance(tile_size, int) or isinstance(tile_size, bool) or tile_size < 1:
+        raise ValueError("tile_size must be a positive integer")
+
+    height, width, _ = image.shape
+    result = np.empty(image.shape, dtype=np.float32)
+    for y0 in range(0, height, tile_size):
+        y1 = min(y0 + tile_size, height)
+        for x0 in range(0, width, tile_size):
+            x1 = min(x0 + tile_size, width)
+            tile = image[y0:y1, x0:x1]
+            if not np.all(np.isfinite(tile)):
+                raise ValueError("image must contain finite numeric RGB values")
+            tile_result = _apply_lut_tile(tile, lut)
+            result[y0:y1, x0:x1] = tile_result
+            del tile_result
+
+    return result
 
 def decode_raw(path: Path, colorspace: str = "srgb") -> np.ndarray:
     """Decode RAW to predictable 16-bit sRGB. Camera-log modes need real transforms."""

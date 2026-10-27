@@ -166,3 +166,19 @@ def test_end_to_end_upload_processing_and_zip_export(client, monkeypatch):
     assert archive.status_code == 200
     assert archive.headers["content-type"] == "application/zip"
     assert len(archive.content) > 0
+
+
+def test_processing_capacity_defaults_to_one_and_accepts_two(monkeypatch):
+    monkeypatch.delenv("PHOTOLUT_CONCURRENCY", raising=False)
+    assert app._processing_capacity_from_env() == 1
+    monkeypatch.setenv("PHOTOLUT_CONCURRENCY", "1")
+    assert app._processing_capacity_from_env() == 1
+    monkeypatch.setenv("PHOTOLUT_CONCURRENCY", "2")
+    assert app._processing_capacity_from_env() == 2
+
+
+@pytest.mark.parametrize("invalid_value", ["", "0", "3", "-1", "two"])
+def test_processing_capacity_rejects_invalid_values(monkeypatch, invalid_value):
+    monkeypatch.setenv("PHOTOLUT_CONCURRENCY", invalid_value)
+    with pytest.raises(RuntimeError, match="PHOTOLUT_CONCURRENCY must be 1 or 2"):
+        app._processing_capacity_from_env()

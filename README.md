@@ -43,10 +43,10 @@ Camera Log workflows (such as S-Log, V-Log, or C-Log) are **not supported yet**.
 - Maximum 200 MiB per RAW file.
 - Maximum 10 MiB per `.cube` LUT.
 - Maximum 512 MiB total upload size per batch.
-- Up to two processing jobs at a time; additional requests receive HTTP 429 while the processor is busy.
+- One processing job at a time by default. Set `PHOTOLUT_CONCURRENCY=2` in the shell before `docker compose up` to allow two jobs; only values `1` and `2` are accepted. Additional requests receive HTTP 429 while all slots are occupied.
 - LUT size must be between 2 and 128 entries per dimension.
 
-These limits help keep local CPU, memory, and disk usage bounded. Very high-resolution RAW files can still require substantial memory during demosaicing.
+These limits help keep local CPU, memory, and disk usage bounded. LUT interpolation and output quantization run in tiles/row chunks to limit temporary allocations, but decoded and graded full-resolution images must still reside in memory. Very high-resolution RAW files can therefore require substantial RAM during demosaicing and export.
 
 ## Metadata
 
