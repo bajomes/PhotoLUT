@@ -26,6 +26,8 @@ MAX_RAW_BYTES = 200 * 1024 * 1024
 MAX_CUBE_BYTES = 10 * 1024 * 1024
 MAX_TOTAL_UPLOAD_BYTES = 512 * 1024 * 1024
 MAX_RAW_FILES = 20
+
+
 def _processing_capacity_from_env() -> int:
     """Default to one heavy RAW job; allow at most two concurrent jobs."""
     raw_value = os.environ.get("PHOTOLUT_CONCURRENCY", "1")
