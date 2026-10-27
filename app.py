@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import threading
@@ -25,7 +26,19 @@ MAX_RAW_BYTES = 200 * 1024 * 1024
 MAX_CUBE_BYTES = 10 * 1024 * 1024
 MAX_TOTAL_UPLOAD_BYTES = 512 * 1024 * 1024
 MAX_RAW_FILES = 20
-PROCESSING_SLOTS = threading.BoundedSemaphore(value=2)
+def _processing_capacity_from_env() -> int:
+    """Default to one heavy RAW job; allow at most two concurrent jobs."""
+    raw_value = os.environ.get("PHOTOLUT_CONCURRENCY", "1")
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError("PHOTOLUT_CONCURRENCY must be 1 or 2") from exc
+    if value not in (1, 2):
+        raise RuntimeError("PHOTOLUT_CONCURRENCY must be 1 or 2")
+    return value
+
+
+PROCESSING_SLOTS = threading.BoundedSemaphore(value=_processing_capacity_from_env())
 RAW_EXTENSIONS = {
     ".cr2", ".cr3", ".nef", ".arw", ".srf", ".sr2",
     ".dng", ".orf", ".rw2", ".raf", ".pef", ".3fr",
@@ -60,6 +73,24 @@ async def _save_upload(
     return size
 
 
+def _quantize_rows(
+    image: np.ndarray,
+    maximum: int,
+    dtype: np.dtype,
+    rows_per_chunk: int = 128,
+) -> np.ndarray:
+    """Quantize RGB float pixels in row chunks to avoid full-frame float temporaries."""
+    if rows_per_chunk < 1:
+        raise ValueError("rows_per_chunk must be positive")
+    output = np.empty(image.shape, dtype=dtype)
+    scale = np.float32(maximum)
+    for y0 in range(0, image.shape[0], rows_per_chunk):
+        y1 = min(y0 + rows_per_chunk, image.shape[0])
+        quantized = np.rint(image[y0:y1] * scale).astype(dtype)
+        output[y0:y1] = quantized
+    return output
+
+
 def _save_outputs(
     graded: np.ndarray,
     before: np.ndarray,
@@ -72,38 +103,49 @@ def _save_outputs(
     suffix = f"_{idx:03d}"
     icc_profile = core.srgb_icc_profile()
 
-    tiff16 = (graded * 65535.0).round().astype(np.uint16)
+    # Quantize the TIFF output in small row groups; preserve round-to-nearest
+    # semantics while avoiding one or more full-resolution float temporaries.
     paths["tiff"] = out_dir / f"{stem}{suffix}_lut.tiff"
+    tiff16 = _quantize_rows(graded, 65535, np.uint16)
     extratags = [(34675, "B", len(icc_profile), icc_profile, False)]
     tifffile.imwrite(
         paths["tiff"], tiff16, photometric="rgb", compression="deflate",
         extratags=extratags,
     )
+    del tiff16
     tiff_metadata_ok = core.copy_metadata(raw_path, paths["tiff"])
 
-    jpeg8 = (graded * 255.0).round().astype(np.uint8)
+    # Create and persist each JPEG/preview in turn so the full-size before,
+    # after, and 16-bit buffers are not all resident at once.
     paths["jpeg"] = out_dir / f"{stem}{suffix}_lut.jpg"
+    jpeg8 = _quantize_rows(graded, 255, np.uint8)
     Image.fromarray(jpeg8, "RGB").save(
         paths["jpeg"], quality=95, icc_profile=icc_profile,
     )
     jpeg_metadata_ok = core.copy_metadata(raw_path, paths["jpeg"])
-    metadata_ok = tiff_metadata_ok and jpeg_metadata_ok
 
-    before8 = (before * 255.0).round().astype(np.uint8)
-    before_img = Image.fromarray(before8, "RGB")
-    after_img = Image.fromarray(jpeg8, "RGB")
+    before_img = Image.fromarray(jpeg8, "RGB")
     scale = min(1.0, PREVIEW_MAX_SIDE / max(before_img.size))
     if scale < 1.0:
         size = (max(1, int(before_img.width * scale)),
                 max(1, int(before_img.height * scale)))
         before_img = before_img.resize(size, Image.LANCZOS)
-        after_img = after_img.resize(size, Image.LANCZOS)
-    paths["preview_before"] = out_dir / f"preview_before{suffix}.jpg"
     paths["preview_after"] = out_dir / f"preview_after{suffix}.jpg"
-    before_img.save(paths["preview_before"], quality=88, icc_profile=icc_profile)
-    after_img.save(paths["preview_after"], quality=88, icc_profile=icc_profile)
-    return paths, metadata_ok
+    before_img.save(paths["preview_after"], quality=88, icc_profile=icc_profile)
+    del before_img, jpeg8
 
+    before8 = _quantize_rows(before, 255, np.uint8)
+    before_img = Image.fromarray(before8, "RGB")
+    scale = min(1.0, PREVIEW_MAX_SIDE / max(before_img.size))
+    if scale < 1.0:
+        size = (max(1, int(before_img.width * scale)),
+                max(1, int(before_img.height * scale)))
+        before_img = before_img.resize(size, Image.LANCZOS)
+    paths["preview_before"] = out_dir / f"preview_before{suffix}.jpg"
+    before_img.save(paths["preview_before"], quality=88, icc_profile=icc_profile)
+    del before_img, before8
+
+    return paths, tiff_metadata_ok and jpeg_metadata_ok
 
 def _safe_output_stem(filename: str) -> str:
     """Return a portable filename stem without path components or unsafe characters."""
