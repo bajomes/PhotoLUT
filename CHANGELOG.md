@@ -2,6 +2,14 @@
 
 Notable changes to PhotoLUT are documented here.
 
+## Unreleased
+
+### Fixed
+- Bound peak memory during 3D LUT application by processing tiles without changing the established per-pixel arithmetic.
+- Quantize TIFF and JPEG output buffers in row chunks to reduce large temporary allocations during export.
+- Default RAW processing concurrency to one job, with a validated optional setting for two concurrent jobs.
+- Add bit-exact LUT regression checks and a Linux subprocess peak-RSS test.
+
 ## 1.0.0 — 2026-10-25
 
 ### Added
