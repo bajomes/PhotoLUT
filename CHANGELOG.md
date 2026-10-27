@@ -4,6 +4,9 @@ Notable changes to PhotoLUT are documented here.
 
 ## Unreleased
 
+### Maintenance
+- Refresh Python dependency constraints for multipart uploads, NumPy, Pillow, Uvicorn, and tifffile; verify the combined set in CI.
+
 ### Fixed
 - Bound peak memory during 3D LUT application by processing tiles without changing the established per-pixel arithmetic.
 - Quantize TIFF and JPEG output buffers in row chunks to reduce large temporary allocations during export.
