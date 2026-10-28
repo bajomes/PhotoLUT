@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+import base64
+import io
 import os
 import re
 import shutil
+import tempfile
 import threading
 import zipfile
 from contextlib import asynccontextmanager
@@ -19,7 +23,7 @@ import core
 import jobs
 
 BASE_DIR = Path(__file__).resolve().parent
-WORK_DIR = BASE_DIR / "jobs"
+WORK_DIR = Path(os.environ.get("PHOTOLUT_WORK_DIR", "/tmp/photolut-jobs"))
 WORK_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_RAW_BYTES = 200 * 1024 * 1024
@@ -50,7 +54,7 @@ PREVIEW_MAX_SIDE = 1600
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    jobs.start_cleanup(WORK_DIR)
+    jobs.start_cleanup(WORK_DIR, max_age=1800, interval=120)
     yield
 
 
@@ -219,6 +223,61 @@ def _process_job_sync(
                         outputs=outputs)
     except Exception as e:
         jobs.update_job(job_id, status=jobs.JobStatus.FAILED, message=str(e))
+
+
+def _preview_data_url(image: np.ndarray) -> str:
+    """Encode a small RGB preview as a JPEG data URL for client-side intensity blending."""
+    pixels = np.rint(np.clip(image, 0.0, 1.0) * 255).astype(np.uint8)
+    preview = Image.fromarray(pixels)
+    buffer = io.BytesIO()
+    preview.save(
+        buffer, format="JPEG", quality=86, optimize=True,
+        icc_profile=core.srgb_icc_profile(),
+    )
+    return "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def _render_preview(raw_path: Path, cube_path: Path, colorspace: str) -> dict[str, str]:
+    """Decode one lightweight RAW sample and prepare its ungraded and full-LUT preview."""
+    lut = core.parse_cube(cube_path)
+    original = core.decode_raw_preview(raw_path, colorspace=colorspace)
+    graded = core.apply_lut(original, lut)
+    return {"before": _preview_data_url(original), "graded": _preview_data_url(graded)}
+
+
+@app.post("/api/preview")
+async def preview(raw_file: UploadFile, cube: UploadFile,
+                  colorspace: str = Form("srgb")) -> dict[str, str]:
+    """Build a lightweight preview before batch export; intensity is blended in the browser."""
+    if not (cube.filename or "").lower().endswith(".cube"):
+        raise HTTPException(400, "LUT file must be .cube format")
+    if colorspace != "srgb":
+        raise HTTPException(400, "Only sRGB input is supported currently.")
+    ext = Path(raw_file.filename or "").suffix.lower()
+    if ext not in RAW_EXTENSIONS:
+        raise HTTPException(400, f"Unsupported RAW format: {ext or '(no extension)'}")
+    if not PROCESSING_SLOTS.acquire(blocking=False):
+        raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="photolut-preview-") as temp_dir:
+            temp_path = Path(temp_dir)
+            cube_path = temp_path / "input.cube"
+            raw_path = temp_path / f"input{ext}"
+            cube_size = await _save_upload(
+                cube, cube_path, MAX_CUBE_BYTES, MAX_TOTAL_UPLOAD_BYTES
+            )
+            await _save_upload(
+                raw_file, raw_path, MAX_RAW_BYTES, MAX_TOTAL_UPLOAD_BYTES - cube_size
+            )
+            try:
+                return await asyncio.to_thread(_render_preview, raw_path, cube_path, colorspace)
+            except Exception as exc:
+                raise HTTPException(
+                    422, "Could not generate preview. Check the RAW photo and .cube LUT."
+                ) from exc
+    finally:
+        PROCESSING_SLOTS.release()
 
 
 @app.post("/api/process")
