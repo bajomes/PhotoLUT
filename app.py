@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 import tifffile
-from fastapi import FastAPI, Form, HTTPException, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
@@ -380,27 +380,41 @@ def job_status(job_id: str) -> dict:
 
 
 @app.get("/files/{job_id}/all.zip")
-def download_zip(job_id: str) -> FileResponse:
+def download_zip(
+    job_id: str,
+    archive_format: str = Query(default="all", alias="format"),
+) -> FileResponse:
     if not job_id.isalnum():
         raise HTTPException(400, "Invalid job ID")
+    archive_options = {
+        "jpeg": (("jpeg",), "all-jpeg.zip", "photolut_jpeg_results.zip"),
+        "tiff": (("tiff",), "all-tiff.zip", "photolut_tiff_results.zip"),
+        "all": (("tiff", "jpeg"), "all.zip", "photolut_results.zip"),
+    }
+    if archive_format not in archive_options:
+        raise HTTPException(400, "Unsupported export format. Choose jpeg, tiff, or all.")
+
     job = jobs.get_job(job_id)
     if not job or job.status != jobs.JobStatus.DONE:
         raise HTTPException(404, "Job results are not ready yet")
 
+    keys, archive_name, download_name = archive_options[archive_format]
     out_dir = (WORK_DIR / job_id / "out").resolve()
-    zip_path = out_dir / "all.zip"
+    zip_path = out_dir / archive_name
 
     if not zip_path.exists():
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for output in job.outputs:
-                for key in ("tiff", "jpeg"):
-                    url = output[f"download_{key}"]
+                for key in keys:
+                    url = output.get(f"download_{key}")
+                    if not url:
+                        continue
                     name = Path(url).name
                     path = out_dir / name
-                    if path.exists():
+                    if path.is_file():
                         zf.write(path, name)
 
-    return FileResponse(zip_path, filename="lutphoto_results.zip",
+    return FileResponse(zip_path, filename=download_name,
                         media_type="application/zip")
 
 
