@@ -10,7 +10,7 @@ Install Docker Desktop or Docker Engine with the Compose plugin, then run:
 docker compose up --build -d
 ```
 
-Open http://127.0.0.1:8000 in a browser. The Compose port is bound to localhost by default. To stop the app:
+Open http://127.0.0.1:8000 in a browser. The Compose port is bound to localhost by default. Job uploads and results stay in the container's temporary `/tmp/photolut-jobs` directory and are cleaned automatically after 30 minutes; Compose no longer creates a persistent `./jobs` mount on the host. To stop the app:
 
 ```bash
 docker compose down
@@ -19,7 +19,7 @@ docker compose down
 ## Current capabilities
 
 - Recognized RAW extensions: CR2, CR3, NEF, ARW, SRF, SR2, DNG, ORF, RW2, RAF, PEF, and 3FR. Successful decoding depends on the exact camera model being supported by rawpy/LibRaw.
-- 3D `.cube` LUTs, trilinear interpolation, and adjustable LUT intensity.
+- 3D `.cube` LUTs, trilinear interpolation, and adjustable LUT intensity with a live preview of the first selected RAW photo.
 - 16-bit TIFF and high-quality JPEG exports.
 - Before/after comparison slider, job progress, and ZIP download.
 - sRGB ICC profile embedding and best-effort metadata copying with ExifTool.
