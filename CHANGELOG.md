@@ -12,6 +12,7 @@ Notable changes to PhotoLUT are documented here.
 - Quantize TIFF and JPEG output buffers in row chunks to reduce large temporary allocations during export.
 - Default RAW processing concurrency to one job, with a validated optional setting for two concurrent jobs.
 - Add bit-exact LUT regression checks and a Linux subprocess peak-RSS test.
+- Fail with a clear error when LUT interpolation produces non-finite values (extreme .cube entries overflowing float32 corner arithmetic), instead of silently exporting blackened images.
 
 ## 1.0.0 — 2026-10-25
 

@@ -138,7 +138,14 @@ def _apply_lut_tile(image: np.ndarray, lut: CubeLUT) -> np.ndarray:
     c11 = c110 + fr * (c111 - c110)
     c0 = c00 + fg * (c01 - c00)
     c1 = c10 + fg * (c11 - c10)
-    return np.clip(c0 + fb * (c1 - c0), 0.0, 1.0).astype(np.float32)
+    result = c0 + fb * (c1 - c0)
+    if not np.all(np.isfinite(result)):
+        raise ValueError(
+            "LUT interpolation produced non-finite values: the .cube table "
+            "holds finite values too extreme for float32 corner arithmetic. "
+            "Reduce the magnitude of the LUT entries."
+        )
+    return np.clip(result, 0.0, 1.0).astype(np.float32)
 
 
 def apply_lut(image: np.ndarray, lut: CubeLUT, tile_size: int = 512) -> np.ndarray:
