@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import rawpy
-from PIL import ImageCms
+from PIL import Image, ImageCms
 
 MAX_CUBE_BYTES = 10 * 1024 * 1024
 MAX_LUT_SIZE = 128
@@ -176,6 +176,33 @@ def apply_lut(image: np.ndarray, lut: CubeLUT, tile_size: int = 512) -> np.ndarr
             del tile_result
 
     return result
+
+def decode_raw_preview(
+    path: Path, colorspace: str = "srgb", max_side: int = 1440
+) -> np.ndarray:
+    """Decode a lightweight half-resolution RGB preview for interactive LUT review."""
+    if colorspace != "srgb":
+        raise ValueError("Only sRGB input is supported currently.")
+    if not isinstance(max_side, int) or isinstance(max_side, bool) or max_side < 1:
+        raise ValueError("max_side must be a positive integer")
+
+    with rawpy.imread(str(path)) as raw:
+        rgb8 = raw.postprocess(
+            use_camera_wb=True,
+            output_color=rawpy.ColorSpace.sRGB,
+            output_bps=8,
+            no_auto_bright=True,
+            gamma=(2.4, 12.92),
+            fbdd_noise_reduction=rawpy.FBDDNoiseReductionMode.Off,
+            half_size=True,
+        )
+    image = Image.fromarray(rgb8)
+    if max(image.size) > max_side:
+        scale = max_side / max(image.size)
+        size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
+        image = image.resize(size, Image.Resampling.LANCZOS)
+    return np.asarray(image, dtype=np.float32) / 255.0
+
 
 def decode_raw(path: Path, colorspace: str = "srgb") -> np.ndarray:
     """Decode RAW to predictable 16-bit sRGB. Camera-log modes need real transforms."""

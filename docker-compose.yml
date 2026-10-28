@@ -5,6 +5,4 @@ services:
             PHOTOLUT_CONCURRENCY: "${PHOTOLUT_CONCURRENCY:-1}"
         ports:
             - "127.0.0.1:8000:8000"
-        volumes:
-            - ./jobs:/app/jobs
         restart: unless-stopped

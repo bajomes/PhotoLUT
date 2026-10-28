@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import base64
+import io
 import time
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 import app
 import jobs
@@ -51,6 +54,45 @@ def post_process(
     if data:
         form.update(data)
     return client.post("/api/process", files=files, data=form)
+
+
+def test_preview_returns_original_and_lut_images(client, monkeypatch):
+    monkeypatch.setattr(
+        app.core,
+        "decode_raw_preview",
+        lambda _path, colorspace="srgb": np.full((8, 10, 3), 0.25, dtype=np.float32),
+    )
+    response = client.post(
+        "/api/preview",
+        files=[
+            ("raw_file", ("sample.nef", b"raw-fixture", "application/octet-stream")),
+            ("cube", ("identity.cube", make_cube(), "text/plain")),
+        ],
+        data={"colorspace": "srgb"},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["before"].startswith("data:image/jpeg;base64,")
+    assert payload["graded"].startswith("data:image/jpeg;base64,")
+    for key in ("before", "graded"):
+        image_bytes = base64.b64decode(payload[key].split(",", 1)[1])
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            assert image.size == (10, 8)
+            assert image.mode == "RGB"
+
+
+def test_preview_rejects_unsupported_raw_extension(client):
+    response = client.post(
+        "/api/preview",
+        files=[
+            ("raw_file", ("sample.png", b"not-raw", "application/octet-stream")),
+            ("cube", ("identity.cube", make_cube(), "text/plain")),
+        ],
+        data={"colorspace": "srgb"},
+    )
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Unsupported RAW format: .png"}
 
 
 def test_rejects_non_cube_lut_extension(client):
