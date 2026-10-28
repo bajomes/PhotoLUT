@@ -79,8 +79,9 @@ jobs:
             exit 1
           fi
 
-          grep -q '<title>PhotoLUT Studio — Batch LUT Workflow</title>' /tmp/photolut-index.html
-          grep -q 'Batch color workflow' /tmp/photolut-index.html
+          grep -q '<title>PhotoLUT</title>' /tmp/photolut-index.html
+          grep -q 'id="previewCompare"' /tmp/photolut-index.html
+          grep -q 'id="intensity"' /tmp/photolut-index.html
           grep -q 'Process batch' /tmp/photolut-index.html
           curl --fail --silent http://127.0.0.1:8000/openapi.json |
             python -c 'import json, sys; assert json.load(sys.stdin)["info"]["title"] == "PhotoLUT"'
