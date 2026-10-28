@@ -34,6 +34,23 @@
 .stage-head{padding:14px 18px}.stage-head h2{font-size:12px;font-weight:600}.stage{background:#11120f}.preview-wrap{gap:8px}.preview-caption{font-size:11px}.empty-stage{color:var(--muted)}
 @media(max-width:760px){.gallery{grid-template-columns:1fr}.preview-canvas{min-height:300px}}
 
+/* Result-first layout and more consistent typography. */
+:root{--radius:13px}
+body{font-size:14px;line-height:1.5;letter-spacing:-.008em}
+button,input,select,textarea{letter-spacing:inherit}
+.panel-title,.stage-head h2,.workflow h3{letter-spacing:.015em}
+.results-head{align-items:center;margin-bottom:18px}
+.results-head h2{font-size:clamp(22px,2.4vw,28px);font-weight:650;letter-spacing:-.045em}
+.results-head p{font-size:12px;line-height:1.55}
+.gallery{grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:18px}
+.result-card{padding:12px;border-radius:13px;transition:border-color .16s ease}
+.result-card:hover{border-color:#4a4c3e}
+.card-name{font-size:12px;font-weight:550;letter-spacing:-.01em;margin:12px 0}
+.card-downloads a{padding:10px 8px;font-size:11px;border-radius:7px}
+.download-dialog-head h3{font-size:17px;font-weight:650}
+.download-option-copy b{font-weight:650}
+@media(max-width:760px){.results-head{align-items:flex-start}.gallery{gap:12px}.result-card{padding:9px}}
+
 .download-picker[hidden]{display:none}
 .download-picker{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:22px}
 .download-backdrop{position:absolute;inset:0;width:100%;height:100%;padding:0;border:0;border-radius:0;background:#000a;cursor:default}
@@ -229,7 +246,7 @@ function wireCompare(cmp){
 function renderResults(outputs,jobId){
   processing=false;$("intensity").disabled=true;$("resetBtn").disabled=false;
   $("rawInput").disabled=true;$("cubeInput").disabled=true;$("dropRaw").setAttribute("aria-disabled","true");$("dropCube").setAttribute("aria-disabled","true");$("dropRaw").tabIndex=-1;$("dropCube").tabIndex=-1;$("processBtn").style.display="none";
-  $("result").style.display="block";$("dlZip").dataset.jobId=jobId;$("fileList").style.display="none";closeDownloadPicker(false);$("summary").textContent=outputs.length+" photos processed."; 
+  $("inputArea").style.display="none";$("result").style.display="block";$("dlZip").dataset.jobId=jobId;$("fileList").style.display="none";closeDownloadPicker(false);$("summary").textContent=outputs.length+" photos processed."; 
   if(outputs.length){const first=outputs[0];previewProcessed=true;$("previewBefore").src=first.preview_before;$("previewAfter").src=first.preview_after;$("previewFilename").textContent=first.filename;$("previewCompare").style.setProperty("--pos","50%");$("previewWrap").hidden=false;$("emptyStage").hidden=true;syncIntensity();}
   const gallery=$("gallery");gallery.replaceChildren();
   outputs.forEach(out=>{
@@ -278,7 +295,7 @@ document.addEventListener("keydown",e=>{
 });
 $("newBatchBtn").addEventListener("click",()=>$("resetBtn").click());
 $("resetBtn").addEventListener("click",()=>{
-  closeDownloadPicker(false);$("dlZip").removeAttribute("data-job-id");previewRevision++;previewLoading=false;processing=false;previewProcessed=false;rawFiles=[];cubeFile=null;$("intensity").disabled=false;$("resetBtn").disabled=false;$("rawInput").disabled=false;$("cubeInput").disabled=false;$("dropRaw").removeAttribute("aria-disabled");$("dropCube").removeAttribute("aria-disabled");$("dropRaw").tabIndex=0;$("dropCube").tabIndex=0;$("processBtn").style.display="block";$("rawName").textContent="CR2, NEF, ARW, DNG and more";$("cubeName").textContent="One .cube file for the batch";$("dropRaw").classList.remove("filled");$("dropCube").classList.remove("filled");$("rawInput").value="";$("cubeInput").value="";$("colorspace").value="srgb";$("intensity").value=100;$("intensityVal").textContent="100%";$("processBtn").disabled=true;$("result").style.display="none";$("inputArea").style.display="grid";$("progressWrap").style.display="none";$("error").replaceChildren();$("fileList").style.display="none";$("previewWrap").hidden=true;$("emptyStage").hidden=false;$("stageMessage").textContent="Add RAW photos and a LUT";$("previewBefore").removeAttribute("src");$("previewAfter").removeAttribute("src");$("previewFilename").textContent="";$("previewCompare").style.setProperty("--pos","50%");$("resetBtn").style.display="none";syncIntensity();updateState();
+  closeDownloadPicker(false);$("dlZip").removeAttribute("data-job-id");$("inputArea").style.display="grid";previewRevision++;previewLoading=false;processing=false;previewProcessed=false;rawFiles=[];cubeFile=null;$("intensity").disabled=false;$("resetBtn").disabled=false;$("rawInput").disabled=false;$("cubeInput").disabled=false;$("dropRaw").removeAttribute("aria-disabled");$("dropCube").removeAttribute("aria-disabled");$("dropRaw").tabIndex=0;$("dropCube").tabIndex=0;$("processBtn").style.display="block";$("rawName").textContent="CR2, NEF, ARW, DNG and more";$("cubeName").textContent="One .cube file for the batch";$("dropRaw").classList.remove("filled");$("dropCube").classList.remove("filled");$("rawInput").value="";$("cubeInput").value="";$("colorspace").value="srgb";$("intensity").value=100;$("intensityVal").textContent="100%";$("processBtn").disabled=true;$("result").style.display="none";$("inputArea").style.display="grid";$("progressWrap").style.display="none";$("error").replaceChildren();$("fileList").style.display="none";$("previewWrap").hidden=true;$("emptyStage").hidden=false;$("stageMessage").textContent="Add RAW photos and a LUT";$("previewBefore").removeAttribute("src");$("previewAfter").removeAttribute("src");$("previewFilename").textContent="";$("previewCompare").style.setProperty("--pos","50%");$("resetBtn").style.display="none";syncIntensity();updateState();
 });
 wireCompare($("previewCompare"));
 updateState();
