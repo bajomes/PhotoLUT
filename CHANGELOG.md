@@ -4,6 +4,8 @@ Notable changes to PhotoLUT are documented here.
 
 ## Unreleased
 
+## 1.0.1 — 2026-10-28
+
 ### Maintenance
 
 - Refresh Python dependency constraints for multipart uploads, NumPy, Pillow, Uvicorn, and tifffile; verify the combined set in CI.
@@ -16,7 +18,7 @@ Notable changes to PhotoLUT are documented here.
 - Add bit-exact LUT regression checks and a Linux subprocess peak-RSS test.
 - Fail with a clear error when LUT interpolation produces non-finite values (extreme .cube entries overflowing float32 corner arithmetic), instead of silently exporting blackened images.
 
-## 1.0.1 — 2026-10-28
+## 1.0.0 — 2026-10-25
 
 ### Added
 
