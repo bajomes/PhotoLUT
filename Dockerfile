@@ -13,7 +13,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py core.py jobs.py ./
+COPY app.py core.py jobs.py video.py ./
 COPY static/ static/
 
 ENV PHOTOLUT_WORK_DIR=/var/lib/photolut/jobs
