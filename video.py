@@ -172,7 +172,7 @@ def _ffmpeg_filter(lut_path: Path, intensity: float) -> str:
     return (
         "[0:v]zscale=t=linear:npl=1000,format=gbrpf32le,"
         "tonemap=mobius:desat=0,"
-        "zscale=p=bt709:t=iec61966-2-1:m=bt709:r=tv,"
+        "zscale=p=bt709:t=bt709:m=bt709:r=tv,"
         "format=gbrpf32le,split=2[base][forlut];"
         f"[forlut]lut3d=file='{lut}':interp=tetrahedral[graded];"
         f"[base][graded]blend=all_expr='A*(1-{amount})+B*{amount}',"
@@ -232,7 +232,11 @@ async def process_uploaded_video(
     if not VIDEO_PROCESSING_SLOT.acquire(blocking=False):
         raise HTTPException(429, "The video processor is busy. Please retry when the current export finishes.")
 
-    temp_dir = Path(tempfile.mkdtemp(prefix="photolut-video-process-"))
+    try:
+        temp_dir = Path(tempfile.mkdtemp(prefix="photolut-video-process-"))
+    except Exception:
+        VIDEO_PROCESSING_SLOT.release()
+        raise
     source = temp_dir / f"input{extension}"
     lut_path = temp_dir / "look.cube"
     output = temp_dir / "photolut_sdr_bt709_10bit.mp4"
