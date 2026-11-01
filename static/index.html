@@ -73,7 +73,7 @@ button,input,select,textarea{letter-spacing:inherit}
 @media(max-width:760px){.download-dialog{padding:16px}.download-picker{padding:14px}}
 
 
-.video-inspect-panel{margin-top:16px}.video-inspect-body{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr);gap:22px;align-items:start}.video-inspect-heading{font-size:13px}.video-inspect-drop{display:block;margin-top:12px}.video-inspect-result{border:1px solid var(--line);border-radius:10px;padding:14px;background:#141510;min-width:0}.video-inspect-result h3{font-size:12px;margin:0 0 10px}.video-meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.video-meta-item{min-width:0}.video-meta-item small{display:block;color:var(--muted);font-size:9px}.video-meta-item b{display:block;font-size:11px;overflow-wrap:anywhere}.video-hlg-status{padding:9px 10px;border-radius:7px;margin-bottom:12px;font-size:11px}.video-hlg-status.good{background:#20291a;color:#d4f078}.video-hlg-status.warn{background:#2b2418;color:#f2c47c}@media(max-width:760px){.video-inspect-body{grid-template-columns:1fr}.video-meta-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.video-preview-panel{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#10110d}.video-preview-panel video{display:block;width:100%;max-height:520px;background:#000;border-radius:7px}.video-preview-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}.video-preview-actions .hint{margin:0}.video-inspect-panel{margin-top:16px}.video-inspect-body{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr);gap:22px;align-items:start}.video-inspect-heading{font-size:13px}.video-inspect-drop{display:block;margin-top:12px}.video-inspect-result{border:1px solid var(--line);border-radius:10px;padding:14px;background:#141510;min-width:0}.video-inspect-result h3{font-size:12px;margin:0 0 10px}.video-meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.video-meta-item{min-width:0}.video-meta-item small{display:block;color:var(--muted);font-size:9px}.video-meta-item b{display:block;font-size:11px;overflow-wrap:anywhere}.video-hlg-status{padding:9px 10px;border-radius:7px;margin-bottom:12px;font-size:11px}.video-hlg-status.good{background:#20291a;color:#d4f078}.video-hlg-status.warn{background:#2b2418;color:#f2c47c}@media(max-width:760px){.video-inspect-body{grid-template-columns:1fr}.video-meta-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
@@ -135,7 +135,7 @@ button,input,select,textarea{letter-spacing:inherit}
     <div class="panel-body video-inspect-body">
       <div>
         <b class="video-inspect-heading">Inspect a Pixel or other HDR video</b>
-        <p class="hint">This separate uploader accepts MP4, MOV, M4V, and MKV up to 512 MiB. It checks metadata only; it does not grade or export video yet.</p>
+        <p class="hint">Inspect HLG metadata, apply a .cube LUT, then preview the SDR BT.709 10-bit result before choosing whether to download it.</p>
         <label class="drop video-inspect-drop" for="videoInspectInput" id="videoInspectDrop">
           <span class="drop-icon">▶</span><b id="videoInspectName">Choose an original video</b><span>MP4 · MOV · M4V · MKV</span><span class="browse">Browse video</span>
         </label>
@@ -149,6 +149,7 @@ button,input,select,textarea{letter-spacing:inherit}
         <p class="hint">Export: MP4 · HEVC Main 10 · SDR BT.709. HLG is tone-mapped to SDR before the LUT is applied; 10-bit output is retained.</p>
         <button class="primary" id="processVideoBtn" type="button" disabled>Apply LUT & export 10-bit video</button>
         <div class="progress-status" id="videoProcessStatus" role="status" aria-live="polite"></div>
+        <div class="video-preview-panel" id="videoPreviewPanel" hidden><video id="processedVideoPreview" controls playsinline preload="metadata"></video><div class="video-preview-actions"><button class="primary" id="downloadProcessedVideo" type="button">Download processed MP4</button><span class="hint">Preview only — no automatic download.</span></div></div>
       </div>
       <div id="videoInspectResult" class="video-inspect-result" hidden aria-live="polite"></div>
     </div>
@@ -338,6 +339,11 @@ videoInspectInput.addEventListener("change",()=>{
   if(file&&file.size>512*1024*1024)$("inspectVideoBtn").disabled=true;
 });
 
+let processedVideoUrl=null,processedVideoName="photolut_sdr_10bit.mp4";
+const processedVideoPreview=$("processedVideoPreview");
+function clearProcessedVideoPreview(){if(processedVideoUrl){URL.revokeObjectURL(processedVideoUrl);processedVideoUrl=null;}processedVideoPreview.removeAttribute("src");processedVideoPreview.load();$("videoPreviewPanel").hidden=true;}
+window.addEventListener("beforeunload",clearProcessedVideoPreview);
+$("downloadProcessedVideo").addEventListener("click",()=>{if(!processedVideoUrl)return;const link=document.createElement("a");link.href=processedVideoUrl;link.download=processedVideoName;document.body.appendChild(link);link.click();link.remove();});
 const videoLutInput=$("videoLutInput");
 const videoLutIntensity=$("videoLutIntensity");
 const processVideoBtn=$("processVideoBtn");
@@ -352,10 +358,13 @@ processVideoBtn.addEventListener("click",async()=>{
     const form=new FormData();form.append("video_file",source);form.append("cube",lut);form.append("intensity",String(Number(videoLutIntensity.value)/100));
     const response=await fetch("/api/video/process",{method:"POST",body:form});
     if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.detail||"Video processing failed ("+response.status+")");}
-    const blob=await response.blob();const url=URL.createObjectURL(blob);const link=document.createElement("a");
-    link.href=url;link.download=source.name.replace(/\.[^.]+$/,"")+"_photolut_sdr_10bit.mp4";
-    document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
-    $("videoProcessStatus").textContent="Export complete. Downloaded SDR BT.709 HEVC 10-bit MP4.";
+    const blob=await response.blob();
+    clearProcessedVideoPreview();
+    processedVideoUrl=URL.createObjectURL(blob);
+    processedVideoName=source.name.replace(/\.[^.]+$/,"")+"_photolut_sdr_10bit.mp4";
+    processedVideoPreview.src=processedVideoUrl;
+    $("videoPreviewPanel").hidden=false;
+    $("videoProcessStatus").textContent="Export complete. Preview the SDR BT.709 HEVC 10-bit MP4 below; download only when ready.";
   }catch(error){$("videoProcessStatus").textContent=error.message||String(error);}
   finally{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length);}
 });
