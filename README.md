@@ -1,6 +1,6 @@
 # PhotoLUT
 
-PhotoLUT applies a 3D `.cube` creative LUT to RAW photographs and exports ready-to-use TIFF and JPEG files. It also includes the first video workflow foundation: upload a video to inspect its codec and color metadata, including HLG detection. Video grading and video export are not implemented yet. Processing runs locally in the Docker container; media are not sent to a third-party image service.
+PhotoLUT applies a 3D `.cube` creative LUT to RAW photographs and exports ready-to-use TIFF and JPEG files. It also includes a separate HLG video workflow for metadata inspection and first-pass LUT processing to SDR BT.709 HEVC 10-bit MP4. Processing runs locally in the Docker container; media are not sent to a third-party image service.
 
 ## Quick start
 
@@ -30,7 +30,7 @@ docker compose down
 - Upload MP4, MOV, M4V, or MKV files up to 512 MiB to `POST /api/video/inspect`.
 - FFprobe reports codec, dimensions, pixel format, estimated bit depth, frame rate, duration, color primaries, matrix, transfer function, and range.
 - HLG is identified from the `arib-std-b67` transfer tag. The API separately reports whether BT.2020 primaries/matrix and at least 10-bit depth are also confirmed.
-- This endpoint only inspects metadata. It does not decode, preview, apply LUTs, tone-map, or re-encode video. Do not interpret a missing color tag as proof that the footage is SDR.
+- The separate `POST /api/video/process` workflow accepts confirmed HLG/BT.2020/10-bit footage and a `.cube` LUT, with adjustable intensity. It tone-maps HLG to SDR BT.709, applies the LUT, and exports an MP4 using HEVC Main 10 (`yuv420p10le`); audio is stream-copied when present. This is an SDR deliverable, not an HLG/HDR master. Processing is limited to one video at a time, 512 MiB input, 10 MiB LUT, and a 20-minute FFmpeg timeout. Do not interpret a missing color tag as proof that footage is SDR.
 
 ## Verification coverage
 
