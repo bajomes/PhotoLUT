@@ -278,7 +278,9 @@ def test_process_uploads_before_acquiring_processing_slot(client, monkeypatch):
 
     monkeypatch.setattr(app, "_save_upload", save_upload)
     monkeypatch.setattr(app, "PROCESSING_SLOTS", Slots())
-    monkeypatch.setattr(app, "_process_job_sync", lambda *_args: None)
+    # Avoid a background worker racing with fixture teardown; this test only
+    # verifies when the slot is acquired, not the processing implementation.
+    monkeypatch.setattr(app, "_run_job_with_slot", lambda *_args: None)
 
     response = post_process(client)
     assert response.status_code == 200, response.text
