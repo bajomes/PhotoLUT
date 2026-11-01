@@ -224,3 +224,65 @@ def test_processing_capacity_rejects_invalid_values(monkeypatch, invalid_value):
     monkeypatch.setenv("PHOTOLUT_CONCURRENCY", invalid_value)
     with pytest.raises(RuntimeError, match="PHOTOLUT_CONCURRENCY must be 1 or 2"):
         app._processing_capacity_from_env()
+
+
+
+def test_preview_uploads_before_acquiring_processing_slot(client, monkeypatch):
+    events = []
+
+    async def save_upload(upload, dest, max_bytes, remaining_total_bytes):
+        events.append("upload")
+        dest.write_bytes(await upload.read())
+        return dest.stat().st_size
+
+    class Slots:
+        def acquire(self, blocking=False):
+            events.append("acquire")
+            return True
+
+        def release(self):
+            events.append("release")
+
+    monkeypatch.setattr(app, "_save_upload", save_upload)
+    monkeypatch.setattr(app, "PROCESSING_SLOTS", Slots())
+    monkeypatch.setattr(app, "_render_preview", lambda *_args: {"before": "before", "graded": "graded"})
+
+    response = client.post(
+        "/api/preview",
+        files=[
+            ("raw_file", ("sample.nef", b"raw-fixture", "application/octet-stream")),
+            ("cube", ("identity.cube", make_cube(), "text/plain")),
+        ],
+        data={"colorspace": "srgb"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert events == ["upload", "upload", "acquire", "release"]
+
+
+def test_process_uploads_before_acquiring_processing_slot(client, monkeypatch):
+    events = []
+
+    async def save_upload(upload, dest, max_bytes, remaining_total_bytes):
+        events.append("upload")
+        dest.write_bytes(await upload.read())
+        return dest.stat().st_size
+
+    class Slots:
+        def acquire(self, blocking=False):
+            events.append("acquire")
+            return True
+
+        def release(self):
+            events.append("release")
+
+    monkeypatch.setattr(app, "_save_upload", save_upload)
+    monkeypatch.setattr(app, "PROCESSING_SLOTS", Slots())
+    # Avoid a background worker racing with fixture teardown; this test only
+    # verifies when the slot is acquired, not the processing implementation.
+    monkeypatch.setattr(app, "_run_job_with_slot", lambda *_args: None)
+
+    response = post_process(client)
+    assert response.status_code == 200, response.text
+    assert events.count("upload") == 2
+    assert events.index("acquire") > max(i for i, event in enumerate(events) if event == "upload")

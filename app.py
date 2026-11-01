@@ -256,9 +256,7 @@ async def preview(raw_file: UploadFile, cube: UploadFile,
     ext = Path(raw_file.filename or "").suffix.lower()
     if ext not in RAW_EXTENSIONS:
         raise HTTPException(400, f"Unsupported RAW format: {ext or '(no extension)'}")
-    if not PROCESSING_SLOTS.acquire(blocking=False):
-        raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
-
+    slot_acquired = False
     try:
         with tempfile.TemporaryDirectory(prefix="photolut-preview-") as temp_dir:
             temp_path = Path(temp_dir)
@@ -270,6 +268,9 @@ async def preview(raw_file: UploadFile, cube: UploadFile,
             await _save_upload(
                 raw_file, raw_path, MAX_RAW_BYTES, MAX_TOTAL_UPLOAD_BYTES - cube_size
             )
+            if not PROCESSING_SLOTS.acquire(blocking=False):
+                raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
+            slot_acquired = True
             try:
                 return await asyncio.to_thread(_render_preview, raw_path, cube_path, colorspace)
             except Exception as exc:
@@ -277,7 +278,8 @@ async def preview(raw_file: UploadFile, cube: UploadFile,
                     422, "Could not generate preview. Check the RAW photo and .cube LUT."
                 ) from exc
     finally:
-        PROCESSING_SLOTS.release()
+        if slot_acquired:
+            PROCESSING_SLOTS.release()
 
 
 @app.post("/api/process")
@@ -306,16 +308,12 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
             raise HTTPException(400, f"Unsupported RAW format: {ext or '(no extension)'}")
         raw_exts.append(ext)
 
-    if not PROCESSING_SLOTS.acquire(blocking=False):
-        raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
-
     job = jobs.create_job()
     job_dir = WORK_DIR / job.id
     try:
         job_dir.mkdir(parents=True, exist_ok=False)
     except Exception as exc:
         jobs.update_job(job.id, status=jobs.JobStatus.FAILED, message="Could not create job directory")
-        PROCESSING_SLOTS.release()
         raise HTTPException(500, "Could not create processing job") from exc
 
     cube_path = job_dir / "input.cube"
@@ -337,12 +335,16 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
     except BaseException as exc:
         shutil.rmtree(job_dir, ignore_errors=True)
         jobs.update_job(job.id, status=jobs.JobStatus.FAILED, message="Upload failed")
-        PROCESSING_SLOTS.release()
         if isinstance(exc, HTTPException):
             raise
         if isinstance(exc, Exception):
             raise HTTPException(422, "Failed to save uploads") from exc
         raise
+
+    if not PROCESSING_SLOTS.acquire(blocking=False):
+        shutil.rmtree(job_dir, ignore_errors=True)
+        jobs.update_job(job.id, status=jobs.JobStatus.FAILED, message="Processor busy")
+        raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
 
     try:
         threading.Thread(
@@ -403,16 +405,27 @@ def download_zip(
     zip_path = out_dir / archive_name
 
     if not zip_path.exists():
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for output in job.outputs:
-                for key in keys:
-                    url = output.get(f"download_{key}")
-                    if not url:
-                        continue
-                    name = Path(url).name
-                    path = out_dir / name
-                    if path.is_file():
-                        zf.write(path, name)
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{archive_name}.", suffix=".tmp", dir=out_dir
+        )
+        os.close(fd)
+        temp_path = Path(temp_name)
+        try:
+            with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for output in job.outputs:
+                    for key in keys:
+                        url = output.get(f"download_{key}")
+                        if not url:
+                            continue
+                        name = Path(url).name
+                        path = out_dir / name
+                        if path.is_file():
+                            zf.write(path, name)
+            # Publish only a complete archive. Concurrent builders each use a
+            # unique temporary file; atomic replacement prevents partial ZIPs.
+            os.replace(temp_path, zip_path)
+        finally:
+            temp_path.unlink(missing_ok=True)
 
     return FileResponse(zip_path, filename=download_name,
                         media_type="application/zip")

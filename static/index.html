@@ -51,6 +51,8 @@ button,input,select,textarea{letter-spacing:inherit}
 .download-option-copy b{font-weight:650}
 @media(max-width:760px){.results-head{align-items:flex-start}.gallery{gap:12px}.result-card{padding:9px}}
 
+.workspace.results-mode{grid-template-columns:minmax(0,1fr)}
+.workspace.results-mode>.source-panel,.workspace.results-mode>.right-panel{display:none}
 .download-picker[hidden]{display:none}
 .download-picker{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:22px}
 .download-backdrop{position:absolute;inset:0;width:100%;height:100%;padding:0;border:0;border-radius:0;background:#000a;cursor:default}
@@ -78,7 +80,7 @@ button,input,select,textarea{letter-spacing:inherit}
 </header>
 <main class="shell">
   <section id="inputArea" class="workspace">
-    <aside class="panel">
+    <aside class="panel source-panel">
       <div class="panel-head"><span class="panel-title">Source files</span></div>
       <div class="panel-body">
         <span class="field-label">RAW PHOTOS</span>
@@ -246,7 +248,7 @@ function wireCompare(cmp){
 function renderResults(outputs,jobId){
   processing=false;$("intensity").disabled=true;$("resetBtn").disabled=false;
   $("rawInput").disabled=true;$("cubeInput").disabled=true;$("dropRaw").setAttribute("aria-disabled","true");$("dropCube").setAttribute("aria-disabled","true");$("dropRaw").tabIndex=-1;$("dropCube").tabIndex=-1;$("processBtn").style.display="none";
-  $("inputArea").style.display="none";$("result").style.display="block";$("dlZip").dataset.jobId=jobId;$("fileList").style.display="none";closeDownloadPicker(false);$("summary").textContent=outputs.length+" photos processed."; 
+  $("inputArea").classList.add("results-mode");$("result").style.display="block";$("dlZip").dataset.jobId=jobId;$("fileList").style.display="none";closeDownloadPicker(false);$("summary").textContent=outputs.length+" photos processed."; 
   if(outputs.length){const first=outputs[0];previewProcessed=true;$("previewBefore").src=first.preview_before;$("previewAfter").src=first.preview_after;$("previewFilename").textContent=first.filename;$("previewCompare").style.setProperty("--pos","50%");$("previewWrap").hidden=false;$("emptyStage").hidden=true;syncIntensity();}
   const gallery=$("gallery");gallery.replaceChildren();
   outputs.forEach(out=>{
@@ -295,7 +297,7 @@ document.addEventListener("keydown",e=>{
 });
 $("newBatchBtn").addEventListener("click",()=>$("resetBtn").click());
 $("resetBtn").addEventListener("click",()=>{
-  closeDownloadPicker(false);$("dlZip").removeAttribute("data-job-id");$("inputArea").style.display="grid";previewRevision++;previewLoading=false;processing=false;previewProcessed=false;rawFiles=[];cubeFile=null;$("intensity").disabled=false;$("resetBtn").disabled=false;$("rawInput").disabled=false;$("cubeInput").disabled=false;$("dropRaw").removeAttribute("aria-disabled");$("dropCube").removeAttribute("aria-disabled");$("dropRaw").tabIndex=0;$("dropCube").tabIndex=0;$("processBtn").style.display="block";$("rawName").textContent="CR2, NEF, ARW, DNG and more";$("cubeName").textContent="One .cube file for the batch";$("dropRaw").classList.remove("filled");$("dropCube").classList.remove("filled");$("rawInput").value="";$("cubeInput").value="";$("colorspace").value="srgb";$("intensity").value=100;$("intensityVal").textContent="100%";$("processBtn").disabled=true;$("result").style.display="none";$("inputArea").style.display="grid";$("progressWrap").style.display="none";$("error").replaceChildren();$("fileList").style.display="none";$("previewWrap").hidden=true;$("emptyStage").hidden=false;$("stageMessage").textContent="Add RAW photos and a LUT";$("previewBefore").removeAttribute("src");$("previewAfter").removeAttribute("src");$("previewFilename").textContent="";$("previewCompare").style.setProperty("--pos","50%");$("resetBtn").style.display="none";syncIntensity();updateState();
+  closeDownloadPicker(false);$("dlZip").removeAttribute("data-job-id");$("inputArea").classList.remove("results-mode");$("inputArea").style.display="grid";previewRevision++;previewLoading=false;processing=false;previewProcessed=false;rawFiles=[];cubeFile=null;$("intensity").disabled=false;$("resetBtn").disabled=false;$("rawInput").disabled=false;$("cubeInput").disabled=false;$("dropRaw").removeAttribute("aria-disabled");$("dropCube").removeAttribute("aria-disabled");$("dropRaw").tabIndex=0;$("dropCube").tabIndex=0;$("processBtn").style.display="block";$("rawName").textContent="CR2, NEF, ARW, DNG and more";$("cubeName").textContent="One .cube file for the batch";$("dropRaw").classList.remove("filled");$("dropCube").classList.remove("filled");$("rawInput").value="";$("cubeInput").value="";$("colorspace").value="srgb";$("intensity").value=100;$("intensityVal").textContent="100%";$("processBtn").disabled=true;$("result").style.display="none";$("inputArea").style.display="grid";$("progressWrap").style.display="none";$("error").replaceChildren();$("fileList").style.display="none";$("previewWrap").hidden=true;$("emptyStage").hidden=false;$("stageMessage").textContent="Add RAW photos and a LUT";$("previewBefore").removeAttribute("src");$("previewAfter").removeAttribute("src");$("previewFilename").textContent="";$("previewCompare").style.setProperty("--pos","50%");$("resetBtn").style.display="none";syncIntensity();updateState();
 });
 wireCompare($("previewCompare"));
 updateState();
