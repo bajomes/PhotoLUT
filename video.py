@@ -199,7 +199,7 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p10le",
         "-tag:v", "hvc1", "-color_primaries", "bt709",
         "-color_trc", "bt709", "-colorspace", "bt709",
-        "-c:a", "copy", "-movflags", "+faststart", str(output),
+        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
     ]
     try:
         subprocess.run(command, check=True, capture_output=True, text=True,
