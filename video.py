@@ -14,7 +14,10 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+
+import core
 
 router = APIRouter(prefix="/api/video", tags=["video"])
 SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv"}
@@ -156,3 +159,119 @@ async def inspect_uploaded_video(video_file: UploadFile) -> dict[str, Any]:
             return metadata
     finally:
         await video_file.close()
+
+
+VIDEO_PROCESSING_SLOT = __import__("threading").BoundedSemaphore(1)
+VIDEO_PROCESS_TIMEOUT_SECONDS = 20 * 60
+
+
+def _ffmpeg_filter(lut_path: Path, intensity: float) -> str:
+    """Convert HLG/BT.2020 to SDR BT.709, apply a display-referred 3D LUT."""
+    lut = str(lut_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    amount = format(intensity, ".6f")
+    return (
+        "[0:v]zscale=t=linear:npl=1000,format=gbrpf32le,"
+        "tonemap=mobius:desat=0,"
+        "zscale=p=bt709:t=iec61966-2-1:m=bt709:r=tv,"
+        "format=gbrpf32le,split=2[base][forlut];"
+        f"[forlut]lut3d=file='{lut}':interp=tetrahedral[graded];"
+        f"[base][graded]blend=all_expr='A*(1-{amount})+B*{amount}',"
+        "format=yuv420p10le[outv]"
+    )
+
+
+def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: float) -> None:
+    """Render HLG source through an SDR BT.709 transform and a .cube LUT."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("FFmpeg is not installed.")
+    metadata = inspect_video(source)
+    if not metadata["hlg_metadata_complete"]:
+        raise ValueError(
+            "This first video-processing workflow requires confirmed HLG, BT.2020, and at least 10-bit input."
+        )
+    # Parse once before invoking FFmpeg so malformed LUTs fail with a clear API error.
+    core.parse_cube(lut_path)
+    command = [
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+        "-i", str(source), "-filter_complex", _ffmpeg_filter(lut_path, intensity),
+        "-map", "[outv]", "-map", "0:a?", "-c:v", "libx265",
+        "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p10le",
+        "-tag:v", "hvc1", "-color_primaries", "bt709",
+        "-color_trc", "bt709", "-colorspace", "bt709",
+        "-c:a", "copy", "-movflags", "+faststart", str(output),
+    ]
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True,
+                       timeout=VIDEO_PROCESS_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Video processing exceeded the 20-minute time limit.") from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or "").strip()
+        raise ValueError(detail[-1000:] or "FFmpeg could not process this video.") from exc
+    if not output.is_file() or output.stat().st_size == 0:
+        raise RuntimeError("FFmpeg did not produce a valid output file.")
+
+
+@router.post("/process")
+async def process_uploaded_video(
+    background_tasks: BackgroundTasks,
+    video_file: UploadFile = File(...),
+    cube: UploadFile = File(...),
+    intensity: float = Form(1.0),
+) -> FileResponse:
+    """Apply a .cube LUT to confirmed HLG footage and export SDR BT.709 HEVC 10-bit MP4."""
+    filename = Path((video_file.filename or "video").replace(chr(92), "/")).name
+    extension = Path(filename).suffix.lower()
+    if extension not in SUPPORTED_VIDEO_EXTENSIONS:
+        raise HTTPException(400, "Supported video formats: MP4, MOV, M4V, and MKV.")
+    if not (cube.filename or "").lower().endswith(".cube"):
+        raise HTTPException(400, "LUT file must be .cube format.")
+    if not 0.0 <= intensity <= 1.0:
+        raise HTTPException(400, "LUT intensity must be between 0 and 1.")
+    if not VIDEO_PROCESSING_SLOT.acquire(blocking=False):
+        raise HTTPException(429, "The video processor is busy. Please retry when the current export finishes.")
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="photolut-video-process-"))
+    source = temp_dir / f"input{extension}"
+    lut_path = temp_dir / "look.cube"
+    output = temp_dir / "photolut_sdr_bt709_10bit.mp4"
+    try:
+        total = 0
+        with source.open("wb") as stream:
+            while chunk := await video_file.read(1024 * 1024):
+                total += len(chunk)
+                if total > MAX_VIDEO_BYTES:
+                    raise HTTPException(413, "Video exceeds the 512 MiB processing limit.")
+                stream.write(chunk)
+        if total == 0:
+            raise HTTPException(400, "The uploaded video is empty.")
+        lut_size = 0
+        with lut_path.open("wb") as stream:
+            while chunk := await cube.read(1024 * 1024):
+                lut_size += len(chunk)
+                if lut_size > 10 * 1024 * 1024:
+                    raise HTTPException(413, "LUT exceeds the 10 MiB limit.")
+                stream.write(chunk)
+        if lut_size == 0:
+            raise HTTPException(400, "The uploaded LUT is empty.")
+        try:
+            await asyncio.to_thread(transcode_hlg_video, source, lut_path, output, intensity)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
+
+        background_tasks.add_task(shutil.rmtree, temp_dir, ignore_errors=True)
+        return FileResponse(
+            output, media_type="video/mp4",
+            filename=f"{Path(filename).stem}_photolut_sdr_10bit.mp4",
+            background=background_tasks,
+        )
+    except BaseException:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
+    finally:
+        await video_file.close()
+        await cube.close()
+        VIDEO_PROCESSING_SLOT.release()
