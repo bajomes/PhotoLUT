@@ -56,6 +56,7 @@ jobs:
         run: docker build --tag photolut:ci .
       - name: Start container
         run: docker run --detach --name photolut-ci --publish 127.0.0.1:8000:8000 photolut:ci
+        run: test "$(docker exec photolut-ci id -u)" -ne 0
       - name: Smoke-test web UI and API schema
         shell: bash
         run: |
