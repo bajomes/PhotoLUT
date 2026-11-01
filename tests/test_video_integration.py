@@ -31,16 +31,16 @@ def test_synthetic_hlg_video_exports_real_10bit_bt709_mp4(tmp_path: Path):
 
     # A small 2x2x2 identity LUT, written as an actual text .cube file.
     lut.write_text(
-        "TITLE \"PhotoLUT integration identity\"\\n"
-        "LUT_3D_SIZE 2\\n"
-        "0 0 0\\n"
-        "1 0 0\\n"
-        "0 1 0\\n"
-        "1 1 0\\n"
-        "0 0 1\\n"
-        "1 0 1\\n"
-        "0 1 1\\n"
-        "1 1 1\\n",
+        "TITLE \"PhotoLUT integration identity\"\n"
+        "LUT_3D_SIZE 2\n"
+        "0 0 0\n"
+        "1 0 0\n"
+        "0 1 0\n"
+        "1 1 0\n"
+        "0 0 1\n"
+        "1 0 1\n"
+        "0 1 1\n"
+        "1 1 1\n",
         encoding="utf-8",
     )
 
