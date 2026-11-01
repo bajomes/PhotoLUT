@@ -72,6 +72,8 @@ button,input,select,textarea{letter-spacing:inherit}
 .download-dialog-foot{margin-top:12px;color:var(--muted);font-size:10px;line-height:1.5}
 @media(max-width:760px){.download-dialog{padding:16px}.download-picker{padding:14px}}
 
+
+.video-inspect-panel{margin-top:16px}.video-inspect-body{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr);gap:22px;align-items:start}.video-inspect-heading{font-size:13px}.video-inspect-drop{display:block;margin-top:12px}.video-inspect-result{border:1px solid var(--line);border-radius:10px;padding:14px;background:#141510;min-width:0}.video-inspect-result h3{font-size:12px;margin:0 0 10px}.video-meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.video-meta-item{min-width:0}.video-meta-item small{display:block;color:var(--muted);font-size:9px}.video-meta-item b{display:block;font-size:11px;overflow-wrap:anywhere}.video-hlg-status{padding:9px 10px;border-radius:7px;margin-bottom:12px;font-size:11px}.video-hlg-status.good{background:#20291a;color:#d4f078}.video-hlg-status.warn{background:#2b2418;color:#f2c47c}@media(max-width:760px){.video-inspect-body{grid-template-columns:1fr}.video-meta-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
@@ -127,6 +129,22 @@ button,input,select,textarea{letter-spacing:inherit}
         </div>
       </div>
     </aside>
+  </section>
+  <section class="panel video-inspect-panel" aria-labelledby="videoInspectTitle">
+    <div class="panel-head"><span class="panel-title" id="videoInspectTitle">VIDEO · HLG INSPECTION</span><span class="step">Early access</span></div>
+    <div class="panel-body video-inspect-body">
+      <div>
+        <b class="video-inspect-heading">Inspect a Pixel or other HDR video</b>
+        <p class="hint">This separate uploader accepts MP4, MOV, M4V, and MKV up to 512 MiB. It checks metadata only; it does not grade or export video yet.</p>
+        <label class="drop video-inspect-drop" for="videoInspectInput" id="videoInspectDrop">
+          <span class="drop-icon">▶</span><b id="videoInspectName">Choose an original video</b><span>MP4 · MOV · M4V · MKV</span><span class="browse">Browse video</span>
+        </label>
+        <input type="file" id="videoInspectInput" accept=".mp4,.mov,.m4v,.mkv,video/mp4,video/quicktime,video/x-m4v,video/x-matroska" hidden>
+        <button class="primary" id="inspectVideoBtn" type="button" disabled>Inspect video metadata</button>
+        <div class="progress-status" id="videoInspectStatus" role="status" aria-live="polite"></div>
+      </div>
+      <div id="videoInspectResult" class="video-inspect-result" hidden aria-live="polite"></div>
+    </div>
   </section>
   <section id="result">
     <div class="results-head"><div><h2>Results</h2><p id="summary"></p></div><div class="result-actions"><button class="ghost new-batch" id="newBatchBtn">Start a new batch</button><button type="button" class="zip-btn" id="dlZip" aria-haspopup="dialog" aria-controls="downloadPicker">↓ &nbsp; Download all</button></div></div>
@@ -301,6 +319,38 @@ $("resetBtn").addEventListener("click",()=>{
 });
 wireCompare($("previewCompare"));
 updateState();
+
+const videoInspectInput=$("videoInspectInput");
+videoInspectInput.addEventListener("change",()=>{
+  const file=videoInspectInput.files&&videoInspectInput.files[0];
+  $("videoInspectName").textContent=file?file.name:"Choose an original video";
+  $("videoInspectDrop").classList.toggle("filled",!!file);
+  $("inspectVideoBtn").disabled=!file;
+  $("videoInspectResult").hidden=true;
+  $("videoInspectStatus").textContent=file?(file.size>512*1024*1024?"File exceeds the 512 MiB limit.":(file.size/1024/1024).toFixed(1)+" MiB selected"):"";
+  if(file&&file.size>512*1024*1024)$("inspectVideoBtn").disabled=true;
+});
+$("inspectVideoBtn").addEventListener("click",async()=>{
+  const file=videoInspectInput.files&&videoInspectInput.files[0];if(!file)return;
+  $("inspectVideoBtn").disabled=true;$("videoInspectStatus").textContent="Uploading and inspecting metadata…";$("videoInspectResult").hidden=true;
+  try{
+    const form=new FormData();form.append("video_file",file);
+    const response=await fetch("/api/video/inspect",{method:"POST",body:form});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.detail||"Video inspection failed ("+response.status+")");
+    const result=$("videoInspectResult");result.replaceChildren();
+    const heading=document.createElement("h3");heading.textContent="Inspection result";result.append(heading);
+    const status=document.createElement("div");status.className="video-hlg-status "+(data.hlg_metadata_complete?"good":"warn");
+    status.textContent=data.hlg_metadata_complete?"HLG detected · BT.2020 · at least 10-bit confirmed":data.is_hlg?"HLG transfer detected, but some HDR metadata is incomplete":"HLG not confirmed from the file metadata";result.append(status);
+    const grid=document.createElement("div");grid.className="video-meta-grid";
+    const fields=[["Codec",data.codec],["Profile",data.codec_profile],["Resolution",data.width&&data.height?data.width+" × "+data.height:null],["Pixel format",data.pixel_format],["Bit depth",data.bit_depth?data.bit_depth+"-bit":null],["Frame rate",data.frame_rate],["Duration",data.duration_seconds==null?null:data.duration_seconds+" s"],["Transfer",data.color_transfer],["Primaries",data.color_primaries],["Matrix",data.color_matrix],["Range",data.color_range],["Container",data.container]];
+    for(const [label,value] of fields){const cell=document.createElement("div");cell.className="video-meta-item";const small=document.createElement("small");small.textContent=label;const bold=document.createElement("b");bold.textContent=value==null?"Unknown":String(value);cell.append(small,bold);grid.append(cell)}
+    result.append(grid);
+    if(Array.isArray(data.warnings)&&data.warnings.length){const warning=document.createElement("p");warning.className="hint";warning.textContent=data.warnings.join(" ");result.append(warning)}
+    $("videoInspectStatus").textContent="Inspection complete. No video frames were modified.";result.hidden=false;
+  }catch(error){$("videoInspectStatus").textContent=error.message||String(error)}
+  finally{$("inspectVideoBtn").disabled=!videoInspectInput.files?.length||videoInspectInput.files[0].size>512*1024*1024}
+});
 </script>
 </body>
 </html>
