@@ -4,6 +4,13 @@ Notable changes to PhotoLUT are documented here.
 
 ## Unreleased
 
+### Added
+
+- Inspect HDR video metadata and identify HLG/BT.2020 10-bit sources before processing.
+- Apply 3D `.cube` LUTs to confirmed HLG footage and export HEVC Main 10 MP4 in 10-bit SDR BT.709; HLG is tone-mapped to SDR during export.
+- Preview processed video in the browser before downloading; downloads are user-initiated.
+- Choose JPEG, 16-bit TIFF, or both formats when downloading a completed photo batch.
+
 ## 1.0.1 — 2026-10-28
 
 ### Maintenance
