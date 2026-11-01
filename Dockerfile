@@ -3,6 +3,7 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libraw-dev \
     libimage-exiftool-perl \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system photolut && useradd --system --gid photolut --home-dir /app --no-create-home photolut
