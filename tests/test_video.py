@@ -83,3 +83,41 @@ def test_inspect_video_reports_timeout(tmp_path: Path):
     ):
         with pytest.raises(RuntimeError, match="timed out"):
             video.inspect_video(source)
+
+
+def test_video_filter_keeps_ten_bit_and_applies_intensity(tmp_path: Path):
+    lut = tmp_path / "look.cube"
+    graph = video._ffmpeg_filter(lut, 0.35)
+    assert "lut3d=" in graph
+    assert "A*(1-0.350000)+B*0.350000" in graph
+    assert "format=yuv420p10le[outv]" in graph
+
+
+def test_transcode_rejects_unconfirmed_hlg_before_ffmpeg(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8)
+    metadata = {"hlg_metadata_complete": False}
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", return_value=metadata
+    ), patch("video.subprocess.run") as run:
+        with pytest.raises(ValueError, match="requires confirmed HLG"):
+            video.transcode_hlg_video(source, lut, output, 1.0)
+    run.assert_not_called()
+
+
+def test_transcode_invokes_ffmpeg_as_ten_bit_bt709(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8)
+    def fake_run(command, **kwargs):
+        Path(command[-1]).write_bytes(b"mp4")
+        return subprocess.CompletedProcess(command, 0, "", "")
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", return_value={"hlg_metadata_complete": True}
+    ), patch("video.core.parse_cube"), patch("video.subprocess.run", side_effect=fake_run) as run:
+        video.transcode_hlg_video(source, lut, output, 0.5)
+    command = run.call_args.args[0]
+    assert "-pix_fmt" in command and command[command.index("-pix_fmt") + 1] == "yuv420p10le"
+    assert command[command.index("-color_trc") + 1] == "bt709"
+    assert output.read_bytes() == b"mp4"

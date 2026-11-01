@@ -142,6 +142,13 @@ button,input,select,textarea{letter-spacing:inherit}
         <input type="file" id="videoInspectInput" accept=".mp4,.mov,.m4v,.mkv,video/mp4,video/quicktime,video/x-m4v,video/x-matroska" hidden>
         <button class="primary" id="inspectVideoBtn" type="button" disabled>Inspect video metadata</button>
         <div class="progress-status" id="videoInspectStatus" role="status" aria-live="polite"></div>
+        <div class="mini-label"><label for="videoLutInput">.CUBE LUT FOR VIDEO</label></div>
+        <input type="file" id="videoLutInput" accept=".cube">
+        <div class="range-head"><label for="videoLutIntensity">Video LUT intensity</label><strong id="videoLutIntensityValue">100%</strong></div>
+        <input type="range" id="videoLutIntensity" min="0" max="100" value="100">
+        <p class="hint">Export: MP4 · HEVC Main 10 · SDR BT.709. HLG is tone-mapped to SDR before the LUT is applied; 10-bit output is retained.</p>
+        <button class="primary" id="processVideoBtn" type="button" disabled>Apply LUT & export 10-bit video</button>
+        <div class="progress-status" id="videoProcessStatus" role="status" aria-live="polite"></div>
       </div>
       <div id="videoInspectResult" class="video-inspect-result" hidden aria-live="polite"></div>
     </div>
@@ -330,6 +337,29 @@ videoInspectInput.addEventListener("change",()=>{
   $("videoInspectStatus").textContent=file?(file.size>512*1024*1024?"File exceeds the 512 MiB limit.":(file.size/1024/1024).toFixed(1)+" MiB selected"):"";
   if(file&&file.size>512*1024*1024)$("inspectVideoBtn").disabled=true;
 });
+
+const videoLutInput=$("videoLutInput");
+const videoLutIntensity=$("videoLutIntensity");
+const processVideoBtn=$("processVideoBtn");
+videoLutInput.addEventListener("change",()=>{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length);});
+videoInspectInput.addEventListener("change",()=>{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length);});
+videoLutIntensity.addEventListener("input",()=>{$("videoLutIntensityValue").textContent=videoLutIntensity.value+"%";});
+processVideoBtn.addEventListener("click",async()=>{
+  const source=videoInspectInput.files?.[0],lut=videoLutInput.files?.[0];if(!source||!lut)return;
+  if(!lut.name.toLowerCase().endsWith(".cube")){$("videoProcessStatus").textContent="Choose a valid .cube LUT.";return;}
+  processVideoBtn.disabled=true;$("videoProcessStatus").textContent="Processing HLG video and preparing 10-bit MP4…";
+  try{
+    const form=new FormData();form.append("video_file",source);form.append("cube",lut);form.append("intensity",String(Number(videoLutIntensity.value)/100));
+    const response=await fetch("/api/video/process",{method:"POST",body:form});
+    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.detail||"Video processing failed ("+response.status+")");}
+    const blob=await response.blob();const url=URL.createObjectURL(blob);const link=document.createElement("a");
+    link.href=url;link.download=source.name.replace(/\.[^.]+$/,"")+"_photolut_sdr_10bit.mp4";
+    document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+    $("videoProcessStatus").textContent="Export complete. Downloaded SDR BT.709 HEVC 10-bit MP4.";
+  }catch(error){$("videoProcessStatus").textContent=error.message||String(error);}
+  finally{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length);}
+});
+
 $("inspectVideoBtn").addEventListener("click",async()=>{
   const file=videoInspectInput.files&&videoInspectInput.files[0];if(!file)return;
   $("inspectVideoBtn").disabled=true;$("videoInspectStatus").textContent="Uploading and inspecting metadata…";$("videoInspectResult").hidden=true;
