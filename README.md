@@ -1,6 +1,6 @@
 # PhotoLUT
 
-PhotoLUT applies a 3D `.cube` creative LUT to RAW photographs and exports ready-to-use TIFF and JPEG files. Processing runs locally in the Docker container; photos are not sent to a third-party image service.
+PhotoLUT applies a 3D `.cube` creative LUT to RAW photographs and exports ready-to-use TIFF and JPEG files. It also includes the first video workflow foundation: upload a video to inspect its codec and color metadata, including HLG detection. Video grading and video export are not implemented yet. Processing runs locally in the Docker container; media are not sent to a third-party image service.
 
 ## Quick start
 
@@ -24,6 +24,13 @@ docker compose down
 - Before/after comparison slider, job progress, and ZIP download.
 - sRGB ICC profile embedding and best-effort metadata copying with ExifTool.
 - Original input filenames are retained for the result cards; output filenames are normalized for portable filesystem use.
+
+## Video inspection (early foundation)
+
+- Upload MP4, MOV, M4V, or MKV files up to 512 MiB to `POST /api/video/inspect`.
+- FFprobe reports codec, dimensions, pixel format, estimated bit depth, frame rate, duration, color primaries, matrix, transfer function, and range.
+- HLG is identified from the `arib-std-b67` transfer tag. The API separately reports whether BT.2020 primaries/matrix and at least 10-bit depth are also confirmed.
+- This endpoint only inspects metadata. It does not decode, preview, apply LUTs, tone-map, or re-encode video. Do not interpret a missing color tag as proof that the footage is SDR.
 
 ## Verification coverage
 

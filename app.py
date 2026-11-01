@@ -21,6 +21,7 @@ from PIL import Image
 
 import core
 import jobs
+import video
 
 BASE_DIR = Path(__file__).resolve().parent
 WORK_DIR = Path(os.environ.get("PHOTOLUT_WORK_DIR", "/tmp/photolut-jobs"))
@@ -59,6 +60,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="PhotoLUT", description="Apply 3D .cube LUTs to RAW photos locally.", lifespan=lifespan)
+app.include_router(video.router)
 
 
 async def _save_upload(
