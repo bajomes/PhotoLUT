@@ -24,10 +24,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install ExifTool
+      - name: Install ExifTool and FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install -y libimage-exiftool-perl
+          sudo apt-get install -y libimage-exiftool-perl ffmpeg
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
