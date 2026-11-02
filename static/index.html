@@ -158,6 +158,24 @@ button,input,select,textarea{letter-spacing:inherit}
     <div class="results-head"><div><h2>Results</h2><p id="summary"></p></div><div class="result-actions"><button class="ghost new-batch" id="newBatchBtn">Start a new batch</button><button type="button" class="zip-btn" id="dlZip" aria-haspopup="dialog" aria-controls="downloadPicker">↓ &nbsp; Download all</button></div></div>
     <div class="gallery" id="gallery"></div>
   </section>
+
+  <section class="panel" id="ultraHdrPanel" style="margin-top:18px">
+    <div class="panel-head"><span class="panel-title">Ultra HDR photo export</span><span class="step">EXPERIMENTAL</span></div>
+    <div class="panel-body" style="max-width:760px">
+      <p class="hint" style="margin-top:0">Convert a single-page 16-bit RGB/RGBA TIFF into a backward-compatible Ultra HDR JPEG with an embedded gain map. Input is interpreted as SDR sRGB; reconstructed highlights are estimates, not recovered HDR source data.</p>
+      <label class="field-label" for="ultraHdrTiff">16-BIT TIFF FILE</label>
+      <input id="ultraHdrTiff" type="file" accept=".tif,.tiff,image/tiff">
+      <div class="mini-label"><label for="ultraHdrQuality">JPEG quality</label><strong id="ultraHdrQualityValue">95</strong></div>
+      <input id="ultraHdrQuality" type="range" min="1" max="100" value="95">
+      <div class="range-head"><label for="ultraHdrBoost">Max Boost</label><strong id="ultraHdrBoostValue">4.0×</strong></div>
+      <input id="ultraHdrBoost" type="range" min="1.1" max="8" step="0.1" value="4">
+      <p class="hint">Only unsigned 16-bit, single-page, contiguous RGB or fully opaque RGBA TIFF is supported. Maximum upload size: 200 MiB; maximum image size: 80 megapixels.</p>
+      <button class="primary" id="ultraHdrExportBtn" type="button" disabled>Export Ultra HDR JPEG</button>
+      <div class="progress-status" id="ultraHdrStatus" role="status" aria-live="polite"></div>
+      <a id="ultraHdrDownload" class="zip-btn" href="#" download hidden style="margin-top:12px">↓ Download Ultra HDR JPEG</a>
+    </div>
+  </section>
+
 </main>
 <div class="download-picker" id="downloadPicker" hidden role="dialog" aria-modal="true" aria-labelledby="downloadTitle">
   <button class="download-backdrop" id="downloadBackdrop" type="button" aria-label="Close download options"></button>
@@ -390,6 +408,41 @@ $("inspectVideoBtn").addEventListener("click",async()=>{
   }catch(error){$("videoInspectStatus").textContent=error.message||String(error)}
   finally{$("inspectVideoBtn").disabled=!videoInspectInput.files?.length||videoInspectInput.files[0].size>512*1024*1024}
 });
+
+const ultraHdrInput=$("ultraHdrTiff");
+const ultraHdrButton=$("ultraHdrExportBtn");
+const ultraHdrQuality=$("ultraHdrQuality");
+const ultraHdrBoost=$("ultraHdrBoost");
+let ultraHdrObjectUrl=null;
+ultraHdrQuality.addEventListener("input",()=>{$("ultraHdrQualityValue").textContent=ultraHdrQuality.value;});
+ultraHdrBoost.addEventListener("input",()=>{$("ultraHdrBoostValue").textContent=Number(ultraHdrBoost.value).toFixed(1)+"×";});
+ultraHdrInput.addEventListener("change",()=>{
+  const file=ultraHdrInput.files?.[0];
+  ultraHdrButton.disabled=!file||!(/\.tiff?$/i.test(file.name))||file.size>200*1024*1024;
+  $("ultraHdrStatus").textContent=file?(file.size>200*1024*1024?"File exceeds 200 MiB.":(!/\.tiff?$/i.test(file.name)?"Choose a .tif or .tiff file.":(file.size/1024/1024).toFixed(1)+" MiB selected")):"";
+  $("ultraHdrDownload").hidden=true;
+  if(ultraHdrObjectUrl){URL.revokeObjectURL(ultraHdrObjectUrl);ultraHdrObjectUrl=null;}
+});
+ultraHdrButton.addEventListener("click",async()=>{
+  const file=ultraHdrInput.files?.[0];if(!file)return;
+  ultraHdrButton.disabled=true;$("ultraHdrStatus").textContent="Uploading TIFF and generating gain map…";
+  $("ultraHdrDownload").hidden=true;
+  try{
+    const form=new FormData();form.append("tiff_file",file);form.append("quality",ultraHdrQuality.value);form.append("max_boost",ultraHdrBoost.value);
+    const response=await fetch("/api/ultrahdr/export",{method:"POST",body:form});
+    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.detail||"Ultra HDR export failed ("+response.status+")");}
+    if(response.headers.get("X-PhotoLUT-Gain-Map-Verified")!=="true")throw new Error("The server did not confirm gain-map verification.");
+    const blob=await response.blob();
+    if(ultraHdrObjectUrl)URL.revokeObjectURL(ultraHdrObjectUrl);
+    ultraHdrObjectUrl=URL.createObjectURL(blob);
+    const download=$("ultraHdrDownload");download.href=ultraHdrObjectUrl;
+    download.download=file.name.replace(/\.tiff?$/i,"")+"_ultrahdr.jpg";download.hidden=false;
+    $("ultraHdrStatus").textContent="Export complete. Gain map verified; download the JPEG when ready.";
+  }catch(error){$("ultraHdrStatus").textContent=error.message||String(error);}
+  finally{ultraHdrButton.disabled=!ultraHdrInput.files?.length||ultraHdrInput.files[0].size>200*1024*1024;}
+});
+window.addEventListener("beforeunload",()=>{if(ultraHdrObjectUrl)URL.revokeObjectURL(ultraHdrObjectUrl);});
+
 </script>
 </body>
 </html>
