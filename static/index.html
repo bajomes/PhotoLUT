@@ -74,7 +74,6 @@ button,input,select,textarea{letter-spacing:inherit}
 
 
 .video-preview-panel{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#10110d}.video-preview-panel video{display:block;width:100%;max-height:520px;background:#000;border-radius:7px}.video-preview-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}.video-preview-actions .hint{margin:0}.video-inspect-panel{margin-top:16px}.video-inspect-body{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr);gap:22px;align-items:start}.video-inspect-heading{font-size:13px}.video-inspect-drop{display:block;margin-top:12px}.video-inspect-result{border:1px solid var(--line);border-radius:10px;padding:14px;background:#141510;min-width:0}.video-inspect-result h3{font-size:12px;margin:0 0 10px}.video-meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.video-meta-item{min-width:0}.video-meta-item small{display:block;color:var(--muted);font-size:9px}.video-meta-item b{display:block;font-size:11px;overflow-wrap:anywhere}.video-hlg-status{padding:9px 10px;border-radius:7px;margin-bottom:12px;font-size:11px}.video-hlg-status.good{background:#20291a;color:#d4f078}.video-hlg-status.warn{background:#2b2418;color:#f2c47c}@media(max-width:760px){.video-inspect-body{grid-template-columns:1fr}.video-meta-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.ultrahdr-panel{margin-top:16px}.ultrahdr-panel .panel-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,.7fr);gap:14px}.ultrahdr-controls{display:grid;gap:10px;align-content:start}.ultrahdr-controls label{font-size:10px;color:var(--muted)}.ultrahdr-controls input[type=number]{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text)}.ultrahdr-status{font-size:10px;color:var(--muted);margin-top:9px;min-height:16px}.ultrahdr-note{border:1px solid #48402d;background:#211e16;border-radius:8px;padding:11px;color:#c5b99f;font-size:10px;line-height:1.6}@media(max-width:760px){.ultrahdr-panel .panel-body{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -153,27 +152,6 @@ button,input,select,textarea{letter-spacing:inherit}
         <div class="video-preview-panel" id="videoPreviewPanel" hidden><video id="processedVideoPreview" controls playsinline preload="metadata"></video><div class="video-preview-actions"><button class="primary" id="downloadProcessedVideo" type="button">Download processed MP4</button><span class="hint">Preview only — no automatic download.</span></div></div>
       </div>
       <div id="videoInspectResult" class="video-inspect-result" hidden aria-live="polite"></div>
-    </div>
-  </section>
-
-  <section class="panel ultrahdr-panel" aria-labelledby="ultrahdrTitle">
-    <div class="panel-head"><span class="panel-title" id="ultrahdrTitle">PHOTO · ULTRA HDR JPEG</span><span class="step">Experimental</span></div>
-    <div class="panel-body">
-      <div>
-        <b class="video-inspect-heading">Create an Ultra HDR photo</b>
-        <p class="hint">Upload a 16-bit RGB TIFF in sRGB. PhotoLUT creates a backward-compatible JPEG with an embedded gain map.</p>
-        <label class="drop video-inspect-drop" for="ultrahdrInput" id="ultrahdrDrop">
-          <span class="drop-icon">HDR</span><b id="ultrahdrName">Choose a 16-bit TIFF</b><span>.TIF · .TIFF · RGB · up to 200 MiB / 80 MP</span><span class="browse">Browse TIFF</span>
-        </label>
-        <input type="file" id="ultrahdrInput" accept=".tif,.tiff,image/tiff" hidden>
-        <button class="primary" id="ultrahdrExportBtn" type="button" disabled>Export Ultra HDR JPEG</button>
-        <div class="ultrahdr-status" id="ultrahdrStatus" role="status" aria-live="polite"></div>
-      </div>
-      <div class="ultrahdr-controls">
-        <div><label for="ultrahdrQuality">JPEG quality</label><input id="ultrahdrQuality" type="number" min="1" max="100" value="95"></div>
-        <div><label for="ultrahdrBoost">Maximum content boost (1–8×)</label><input id="ultrahdrBoost" type="number" min="1.1" max="8" step="0.1" value="4"></div>
-        <div class="ultrahdr-note">Important: a 16-bit SDR TIFF does not contain original HDR highlights. This experimental export estimates highlight expansion using inverse tone mapping; it cannot restore detail that is not present in the TIFF. Only sRGB TIFFs are supported.</div>
-      </div>
     </div>
   </section>
   <section id="result">
@@ -349,34 +327,6 @@ $("resetBtn").addEventListener("click",()=>{
 });
 wireCompare($("previewCompare"));
 updateState();
-
-
-const ultrahdrInput=$("ultrahdrInput");
-const ultrahdrButton=$("ultrahdrExportBtn");
-ultrahdrInput.addEventListener("change",()=>{
-  const file=ultrahdrInput.files?.[0];
-  $("ultrahdrName").textContent=file?file.name:"Choose a 16-bit TIFF";
-  $("ultrahdrDrop").classList.toggle("filled",!!file);
-  $("ultrahdrStatus").textContent=file?(file.size>200*1024*1024?"File exceeds the 200 MiB limit.":(file.size/1024/1024).toFixed(1)+" MiB selected"):"";
-  ultrahdrButton.disabled=!file||file.size>200*1024*1024;
-});
-ultrahdrButton.addEventListener("click",async()=>{
-  const file=ultrahdrInput.files?.[0];if(!file)return;
-  const quality=Number($("ultrahdrQuality").value),boost=Number($("ultrahdrBoost").value);
-  if(!Number.isInteger(quality)||quality<1||quality>100){$("ultrahdrStatus").textContent="JPEG quality must be 1–100.";return;}
-  if(!Number.isFinite(boost)||boost<=1||boost>8){$("ultrahdrStatus").textContent="Content boost must be greater than 1 and no more than 8.";return;}
-  ultrahdrButton.disabled=true;$("ultrahdrStatus").textContent="Uploading TIFF and building gain map…";
-  try{
-    const form=new FormData();form.append("tiff_file",file);form.append("quality",String(quality));form.append("max_boost",String(boost));
-    const response=await fetch("/api/ultrahdr/export",{method:"POST",body:form});
-    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.detail||"Ultra HDR export failed ("+response.status+")");}
-    const blob=await response.blob(),url=URL.createObjectURL(blob);
-    const link=document.createElement("a");link.href=url;link.download=file.name.replace(/\.[^.]+$/,"")+"_ultrahdr.jpg";document.body.appendChild(link);link.click();link.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),60000);
-    $("ultrahdrStatus").textContent="Export complete. Gain-map verification passed; JPEG download started.";
-  }catch(error){$("ultrahdrStatus").textContent=error.message||String(error);}
-  finally{ultrahdrButton.disabled=!ultrahdrInput.files?.length||ultrahdrInput.files[0].size>200*1024*1024;}
-});
 
 const videoInspectInput=$("videoInspectInput");
 videoInspectInput.addEventListener("change",()=>{

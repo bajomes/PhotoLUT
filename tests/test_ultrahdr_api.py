@@ -38,6 +38,7 @@ def test_ultrahdr_endpoint_returns_verified_jpeg_and_cleans_temp(client, tmp_pat
 
     def fake_export(input_path, output_path, **kwargs):
         captured["input_exists"] = input_path.is_file()
+        captured["temp_dir"] = input_path.parent
         output_path.write_bytes(b"verified jpeg")
         return {"gain_map_verified": True}
 
@@ -53,4 +54,4 @@ def test_ultrahdr_endpoint_returns_verified_jpeg_and_cleans_temp(client, tmp_pat
     assert response.headers["x-photolut-gain-map-verified"] == "true"
     assert response.content == b"verified jpeg"
     assert captured["input_exists"] is True
-    assert not Path(response.headers.get("x-unused-temp-path", "/nonexistent")).exists()
+    assert not captured["temp_dir"].exists()
