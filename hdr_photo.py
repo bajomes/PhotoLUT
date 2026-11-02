@@ -96,7 +96,7 @@ def export_ultrahdr(
     source: Path,
     destination: Path,
     *,
-    encoder: str = "uhdr_app",
+    encoder: str = "ultrahdr_app",
     quality: int = 100,
     max_boost: float = DEFAULT_BOOST,
     timeout: int = 180,
