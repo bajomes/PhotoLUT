@@ -61,6 +61,8 @@ def _load_tiff(path: Path) -> tuple[np.ndarray, bytes | None]:
         samples = int(page.samplesperpixel or 1)
         if samples not in (3, 4):
             raise ValueError("TIFF must contain RGB or RGBA samples")
+        if int(page.imagewidth) * int(page.imagelength) > MAX_PIXELS:
+            raise ValueError("TIFF exceeds the 80 megapixel limit")
         pixels = page.asarray()
         icc_tag = page.tags.get("InterColorProfile")
         icc = bytes(icc_tag.value) if icc_tag is not None else None
