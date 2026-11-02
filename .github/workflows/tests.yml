@@ -111,4 +111,4 @@ jobs:
           grep -q 'family=Inter:wght@100..900' /tmp/photolut-index.html
           grep -q 'Process batch' /tmp/photolut-index.html
           curl --fail --silent http://127.0.0.1:8000/openapi.json |
-            python -c 'import json, sys; assert json.load(sys.stdin)["info"]["title"] == "PhotoLUT"'
+            python -c 'import json, sys; schema=json.load(sys.stdin); assert schema["info"]["title"] == "PhotoLUT"; assert "/api/ultrahdr/export" in schema["paths"]'
