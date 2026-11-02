@@ -1,38 +1,15 @@
 # Ultra HDR photo export (experimental)
 
-PhotoLUT's first Ultra HDR photo-export slice accepts **single-page, RGB/RGBA,
-unsigned 16-bit TIFF** input and creates a backward-compatible Ultra HDR JPEG.
-It requires Google's `ultrahdr_app` sample executable from
-[google/libultrahdr](https://github.com/google/libultrahdr) on PATH. The
-upstream build documented for libultrahdr v2.0.2 produces this executable
-when `UHDR_BUILD_EXAMPLES=ON` (the default).
+PhotoLUT accepts **single-page, RGB/RGBA, unsigned 16-bit TIFF** input and creates a backward-compatible Ultra HDR JPEG through Google's `ultrahdr_app` sample executable from [google/libultrahdr](https://github.com/google/libultrahdr). The Docker image builds libultrahdr v2.0.2 from pinned commit `e5f5a022fe96fc4dc2ee35c19f733a50df807abe` with `UHDR_BUILD_EXAMPLES=ON`.
 
-The TIFF is interpreted as an SDR sRGB rendition. PhotoLUT reconstructs a
-highlight shoulder (default maximum content boost 4x), encodes a linear
-RGBA half-float HDR intent plus an SDR JPEG base, and asks libultrahdr to
-derive and embed the gain map. Both HDR and SDR intents are explicitly tagged
-with BT.709/sRGB primaries, and the configured maximum content boost is passed
-to the encoder as gain-map metadata. The output is probed by libultrahdr before
-it is accepted.
+The TIFF is interpreted as an SDR sRGB rendition. PhotoLUT reconstructs a highlight shoulder (default maximum content boost 4x), encodes a linear RGBA half-float HDR intent plus an SDR JPEG base, and asks libultrahdr to derive and embed the gain map. Both HDR and SDR intents are tagged with BT.709/sRGB primaries, and the configured maximum content boost is passed to the encoder as gain-map metadata. The output is probed by libultrahdr before it is accepted.
 
-**Input restrictions:** only RGB or fully opaque RGBA, contiguous, unsigned
-16-bit TIFF is accepted. Multi-page, grayscale, planar-separate, transparent,
-and non-uint16 TIFF files are rejected. If an ICC profile is present, it must
-be identifiable as sRGB; files without an embedded profile are treated as
-sRGB. Wide-gamut input must be converted to sRGB before export.
+The feature is available through `POST /api/ultrahdr/export` and the dedicated Ultra HDR panel in the web UI. The endpoint accepts a TIFF upload, JPEG quality (1–100), and maximum content boost (>1–8). Uploads are limited to 200 MiB and images to 80 megapixels; temporary files are removed after the response.
 
-**Important:** this is inverse-tone-mapped HDR, not recovery of HDR data that
-was never present in an SDR TIFF. The reconstructed highlights are an
-estimated rendering and should be reviewed visually on an HDR-capable display.
-The current implementation is experimental and is not yet wired into the web
-UI.
+**Input restrictions:** only RGB or fully opaque RGBA, contiguous, unsigned 16-bit TIFF is accepted. Multi-page, grayscale, planar-separate, transparent, and non-uint16 TIFF files are rejected. If an ICC profile is present, it must be identifiable as sRGB; files without an embedded profile are treated as sRGB. Wide-gamut input must be converted to sRGB before export.
 
-Run unit tests with `pytest tests/test_hdr_photo.py`. To build the upstream
-encoder, use the official
-[libultrahdr build instructions](https://github.com/google/libultrahdr/blob/v2.0.2/docs/building.md).
-The v2.0.2 release is pinned at commit
-`e5f5a022fe96fc4dc2ee35c19f733a50df807abe`; on Linux the documented build
-uses CMake, a C++17 compiler, libjpeg development headers, and Ninja. The
-official sample executable is named `ultrahdr_app`. The command-line flags used by the exporter have been checked against the v2.0.2
-sample source. A real encoder run and end-to-end gain-map output test are still
-required before this export is enabled in the app.
+**Important:** this is inverse-tone-mapped HDR, not recovery of HDR data that was never present in an SDR TIFF. The reconstructed highlights are an estimated rendering. The feature remains experimental until representative photos have been visually reviewed on HDR-capable physical devices. Platform recompression may also alter or remove HDR metadata.
+
+The CI workflow builds the pinned encoder, runs a real TIFF-to-Ultra-HDR encode and gain-map probe in the Docker image, verifies the container runs unprivileged, smoke-tests the web UI/API schema, and runs the Python test suite. Run focused unit tests with `pytest tests/test_hdr_photo.py`.
+
+For upstream build details, see the official [libultrahdr v2.0.2 build instructions](https://github.com/google/libultrahdr/blob/v2.0.2/docs/building.md). The official sample executable is named `ultrahdr_app`.
