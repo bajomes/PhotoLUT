@@ -16,12 +16,14 @@ import numpy as np
 import tifffile
 from fastapi import FastAPI, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
 import core
 import jobs
 import video
+import hdr_photo
 
 BASE_DIR = Path(__file__).resolve().parent
 WORK_DIR = Path(os.environ.get("PHOTOLUT_WORK_DIR", "/tmp/photolut-jobs"))
@@ -362,6 +364,58 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
         raise HTTPException(500, "Could not start processing job") from exc
 
     return {"job_id": job.id}
+
+
+@app.post("/api/ultrahdr/export")
+async def export_ultrahdr_photo(
+    tiff_file: UploadFile,
+    quality: int = Form(95),
+    max_boost: float = Form(hdr_photo.DEFAULT_BOOST),
+) -> FileResponse:
+    """Convert a validated 16-bit SDR sRGB TIFF into a gain-map Ultra HDR JPEG."""
+    filename = (tiff_file.filename or "photo.tiff").replace(chr(92), "/").rsplit("/", 1)[-1]
+    extension = Path(filename).suffix.lower()
+    if extension not in {".tif", ".tiff"}:
+        raise HTTPException(400, "Input must be a .tif or .tiff file")
+    if not 1 <= quality <= 100:
+        raise HTTPException(400, "JPEG quality must be between 1 and 100")
+    if not (1.0 < max_boost <= 8.0):
+        raise HTTPException(400, "Max content boost must be greater than 1 and no more than 8")
+    if not PROCESSING_SLOTS.acquire(blocking=False):
+        raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="photolut-ultrahdr-api-"))
+    source = temp_dir / f"source{extension}"
+    output = temp_dir / f"{_safe_output_stem(filename)}_ultrahdr.jpg"
+    try:
+        await _save_upload(tiff_file, source, hdr_photo.MAX_TIFF_BYTES,
+                           hdr_photo.MAX_TIFF_BYTES)
+        try:
+            metadata = await asyncio.to_thread(
+                hdr_photo.export_ultrahdr, source, output,
+                quality=quality, max_boost=max_boost,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise HTTPException(504, "Ultra HDR encoding timed out. Try a smaller TIFF.") from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except RuntimeError as exc:
+            status = 503 if "not installed" in str(exc).lower() else 422
+            raise HTTPException(status, str(exc)) from exc
+        if not output.is_file() or not metadata.get("gain_map_verified"):
+            raise HTTPException(422, "Ultra HDR output did not pass gain-map verification")
+        PROCESSING_SLOTS.release()
+        return FileResponse(
+            output,
+            media_type="image/jpeg",
+            filename=output.name,
+            background=BackgroundTask(shutil.rmtree, temp_dir, ignore_errors=True),
+            headers={"X-PhotoLUT-Gain-Map-Verified": "true"},
+        )
+    except BaseException:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        PROCESSING_SLOTS.release()
+        raise
 
 
 @app.get("/api/jobs/{job_id}")
