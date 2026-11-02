@@ -377,9 +377,9 @@ async def export_ultrahdr_photo(
     if Path(filename).suffix.lower() not in {".tif", ".tiff"}:
         raise HTTPException(400, "Input must be a .tif or .tiff file")
     if not 1 <= quality <= 100:
-        raise HTTPException(400, "JPEG quality must be between 1 and 100")
+        raise HTTPException(422, "JPEG quality must be between 1 and 100")
     if not (1.0 < max_boost <= 8.0):
-        raise HTTPException(400, "Max Boost must be greater than 1 and no more than 8")
+        raise HTTPException(422, "Max Boost must be greater than 1 and no more than 8")
     if not PROCESSING_SLOTS.acquire(blocking=False):
         raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
 
