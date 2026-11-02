@@ -10,8 +10,10 @@ when `UHDR_BUILD_EXAMPLES=ON` (the default).
 The TIFF is interpreted as an SDR sRGB rendition. PhotoLUT reconstructs a
 highlight shoulder (default maximum content boost 4x), encodes a linear
 RGBA half-float HDR intent plus an SDR JPEG base, and asks libultrahdr to
-derive and embed the gain map. The output is probed by libultrahdr before it
-is accepted.
+derive and embed the gain map. Both HDR and SDR intents are explicitly tagged
+with BT.709/sRGB primaries, and the configured maximum content boost is passed
+to the encoder as gain-map metadata. The output is probed by libultrahdr before
+it is accepted.
 
 **Input restrictions:** only RGB or fully opaque RGBA, contiguous, unsigned
 16-bit TIFF is accepted. Multi-page, grayscale, planar-separate, transparent,
@@ -31,6 +33,6 @@ encoder, use the official
 The v2.0.2 release is pinned at commit
 `e5f5a022fe96fc4dc2ee35c19f733a50df807abe`; on Linux the documented build
 uses CMake, a C++17 compiler, libjpeg development headers, and Ninja. The
-official sample executable is named `ultrahdr_app`. The actual command-line
-argument compatibility and end-to-end gain-map output still need to be
-verified against that pinned build before this export is enabled in the app.
+official sample executable is named `ultrahdr_app`. The command-line flags used by the exporter have been checked against the v2.0.2
+sample source. A real encoder run and end-to-end gain-map output test are still
+required before this export is enabled in the app.

@@ -78,3 +78,30 @@ def test_export_rejects_invalid_timeout_before_encoder(tmp_path: Path, monkeypat
     monkeypatch.setattr(hdr_photo.shutil, "which", lambda _: "/usr/bin/uhdr_app")
     with pytest.raises(ValueError, match="timeout"):
         hdr_photo.export_ultrahdr(tmp_path / "missing.tiff", tmp_path / "out.jpg", timeout=0)
+
+
+
+def test_encoder_uses_srgb_gamut_and_content_boost(tmp_path: Path, monkeypatch):
+    source = tmp_path / "input.tiff"
+    _write_rgb_tiff(source, np.full((2, 2, 3), 50000, dtype=np.uint16))
+    monkeypatch.setattr(hdr_photo.shutil, "which", lambda _: "/usr/bin/ultrahdr_app")
+    commands = []
+
+    class Result:
+        returncode = 0
+        stderr = ""
+        stdout = "gainmap metadata present"
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if "-P" not in command:
+            Path(command[command.index("-z") + 1]).write_bytes(b"fake jpeg")
+        return Result()
+
+    monkeypatch.setattr(hdr_photo.subprocess, "run", fake_run)
+    result = hdr_photo.export_ultrahdr(source, tmp_path / "out.jpg", max_boost=3.5)
+    encode = commands[0]
+    assert encode[encode.index("-C") + 1] == "0"
+    assert encode[encode.index("-c") + 1] == "0"
+    assert encode[encode.index("-K") + 1] == "3.5"
+    assert result["gain_map_verified"] is True

@@ -132,7 +132,7 @@ def export_ultrahdr(
         )
         command = [
             executable, "-m", "0", "-p", str(raw_path), "-a", "4",
-            "-t", "0", "-C", "1", "-i", str(base_path),
+            "-t", "0", "-C", "0", "-c", "0", "-K", str(max_boost), "-i", str(base_path),
             "-w", str(width), "-h", str(height), "-q", str(quality),
             "-Q", str(quality), "-D", "1", "-z", str(destination),
         ]
