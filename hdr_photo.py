@@ -5,7 +5,6 @@ with a conservative inverse-tone-map shoulder; they are not recovered source dat
 """
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 import tempfile
@@ -13,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import tifffile
-from PIL import Image
+from PIL import Image, ImageCms
 
 MAX_TIFF_BYTES = 200 * 1024 * 1024
 MAX_PIXELS = 80_000_000
@@ -31,31 +30,58 @@ def _linear_to_srgb(values: np.ndarray) -> np.ndarray:
                     1.055 * np.power(values, 1.0 / 2.4) - 0.055)
 
 
+def _is_srgb_profile(profile_bytes: bytes) -> bool:
+    """Only pass through profiles explicitly identified as sRGB."""
+    try:
+        description = ImageCms.getProfileDescription(
+            ImageCms.ImageCmsProfile(__import__("io").BytesIO(profile_bytes))
+        )
+    except Exception as exc:
+        raise ValueError("TIFF contains an unreadable ICC profile") from exc
+    return "srgb" in description.lower()
+
+
 def _load_tiff(path: Path) -> tuple[np.ndarray, bytes | None]:
     if path.stat().st_size > MAX_TIFF_BYTES:
         raise ValueError("TIFF exceeds the 200 MiB limit")
     with tifffile.TiffFile(path) as tif:
-        page = tif.pages[0]
         if len(tif.pages) != 1:
             raise ValueError("Only single-page TIFF files are supported")
-        if page.bitspersample not in (16, (16, 16, 16), (16, 16, 16, 16)):
+        page = tif.pages[0]
+        bits = page.bitspersample
+        bits_per_sample = (bits,) if isinstance(bits, int) else tuple(bits)
+        if not bits_per_sample or any(bit != 16 for bit in bits_per_sample):
             raise ValueError("Input must be a 16-bit TIFF")
+        if int(page.photometric) != 2:
+            raise ValueError("TIFF must use RGB photometric interpretation")
+        if int(page.planarconfig or 1) != 1:
+            raise ValueError("Planar-separate TIFF files are not supported")
+        if int(page.sampleformat or 1) != 1:
+            raise ValueError("TIFF samples must be unsigned integers")
+        samples = int(page.samplesperpixel or 1)
+        if samples not in (3, 4):
+            raise ValueError("TIFF must contain RGB or RGBA samples")
         pixels = page.asarray()
-        icc = page.tags.get("InterColorProfile")
-        icc_bytes = icc.value if icc is not None else None
-    if pixels.ndim != 3 or pixels.shape[-1] not in (3, 4):
-        raise ValueError("TIFF must contain RGB or RGBA pixels")
+        icc_tag = page.tags.get("InterColorProfile")
+        icc = bytes(icc_tag.value) if icc_tag is not None else None
+
+    if pixels.ndim != 3 or pixels.shape[-1] != samples:
+        raise ValueError("TIFF must use contiguous RGB or RGBA pixel data")
     if pixels.shape[0] * pixels.shape[1] > MAX_PIXELS:
         raise ValueError("TIFF exceeds the 80 megapixel limit")
     if pixels.dtype != np.uint16:
         raise ValueError("TIFF pixel data must be unsigned 16-bit")
+    if samples == 4 and np.any(pixels[..., 3] != 65535):
+        raise ValueError("TIFF with transparency is not supported; flatten it to RGB first")
+    if icc is not None and not _is_srgb_profile(icc):
+        raise ValueError("Only sRGB ICC profiles are supported; convert the TIFF to sRGB")
     rgb = pixels[..., :3].astype(np.float32) / 65535.0
-    return rgb, icc_bytes
+    return rgb, icc
 
 
 def _make_hdr_intent(sdr_linear: np.ndarray, max_boost: float) -> np.ndarray:
     """Reconstruct a restrained highlight shoulder while leaving SDR base intact."""
-    if not 1.0 < max_boost <= 8.0:
+    if not np.isfinite(max_boost) or not 1.0 < max_boost <= 8.0:
         raise ValueError("max_boost must be greater than 1 and no more than 8")
     luminance = (sdr_linear[..., 0] * 0.2126 +
                  sdr_linear[..., 1] * 0.7152 +
@@ -78,9 +104,13 @@ def export_ultrahdr(
     """Create a backward-compatible Ultra HDR JPEG and verify its gain map."""
     if not 1 <= quality <= 100:
         raise ValueError("quality must be between 1 and 100")
+    if not np.isfinite(max_boost) or not 1.0 < max_boost <= 8.0:
+        raise ValueError("max_boost must be greater than 1 and no more than 8")
+    if timeout <= 0:
+        raise ValueError("timeout must be positive")
     executable = shutil.which(encoder)
     if executable is None:
-        raise RuntimeError("Ultra HDR encoder 'uhdr_app' is not installed")
+        raise RuntimeError(f"Ultra HDR encoder '{encoder}' is not installed")
     sdr, icc = _load_tiff(source)
     height, width, _ = sdr.shape
     linear = _srgb_to_linear(sdr)
@@ -109,6 +139,7 @@ def export_ultrahdr(
         result = subprocess.run(command, capture_output=True, text=True,
                                 timeout=timeout, check=False)
         if result.returncode != 0 or not destination.is_file():
+            destination.unlink(missing_ok=True)
             detail = (result.stderr or result.stdout or "encoder failed").strip()
             raise RuntimeError(f"Ultra HDR encoding failed: {detail[:500]}")
         probe = subprocess.run(

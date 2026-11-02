@@ -2,8 +2,13 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import tifffile
 
 import hdr_photo
+
+
+def _write_rgb_tiff(path: Path, pixels: np.ndarray, **kwargs) -> None:
+    tifffile.imwrite(path, pixels, photometric="rgb", **kwargs)
 
 
 def test_srgb_round_trip():
@@ -20,10 +25,45 @@ def test_inverse_tone_map_preserves_shadows_and_expands_highlights():
     assert np.max(hdr) <= 4.0
 
 
-@pytest.mark.parametrize("boost", [1.0, 0.5, 8.1, float("nan")])
+@pytest.mark.parametrize("boost", [1.0, 0.5, 8.1, float("nan"), float("inf")])
 def test_rejects_invalid_boost(boost):
     with pytest.raises(ValueError):
         hdr_photo._make_hdr_intent(np.zeros((1, 1, 3), dtype=np.float32), boost)
+
+
+def test_loads_rgb_16bit_tiff(tmp_path: Path):
+    source = tmp_path / "rgb.tiff"
+    pixels = np.array([[[0, 32768, 65535]]], dtype=np.uint16)
+    _write_rgb_tiff(source, pixels)
+    rgb, icc = hdr_photo._load_tiff(source)
+    assert rgb.shape == (1, 1, 3)
+    assert icc is None
+    np.testing.assert_allclose(rgb[0, 0], [0.0, 32768 / 65535, 1.0])
+
+
+def test_rejects_non_rgb_tiff(tmp_path: Path):
+    source = tmp_path / "gray.tiff"
+    tifffile.imwrite(source, np.zeros((2, 2), dtype=np.uint16))
+    with pytest.raises(ValueError, match="RGB photometric"):
+        hdr_photo._load_tiff(source)
+
+
+def test_rejects_transparent_rgba(tmp_path: Path):
+    source = tmp_path / "alpha.tiff"
+    pixels = np.full((2, 2, 4), 65535, dtype=np.uint16)
+    pixels[0, 0, 3] = 0
+    _write_rgb_tiff(source, pixels, extrasamples="unassalpha")
+    with pytest.raises(ValueError, match="transparency"):
+        hdr_photo._load_tiff(source)
+
+
+def test_rejects_mult_page_tiff(tmp_path: Path):
+    source = tmp_path / "multi.tiff"
+    with tifffile.TiffWriter(source) as writer:
+        writer.write(np.zeros((2, 2, 3), dtype=np.uint16), photometric="rgb")
+        writer.write(np.zeros((2, 2, 3), dtype=np.uint16), photometric="rgb")
+    with pytest.raises(ValueError, match="single-page"):
+        hdr_photo._load_tiff(source)
 
 
 def test_export_requires_encoder(tmp_path: Path, monkeypatch):
@@ -32,3 +72,9 @@ def test_export_requires_encoder(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(hdr_photo.shutil, "which", lambda _: None)
     with pytest.raises(RuntimeError, match="not installed"):
         hdr_photo.export_ultrahdr(source, tmp_path / "output.jpg")
+
+
+def test_export_rejects_invalid_timeout_before_encoder(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(hdr_photo.shutil, "which", lambda _: "/usr/bin/uhdr_app")
+    with pytest.raises(ValueError, match="timeout"):
+        hdr_photo.export_ultrahdr(tmp_path / "missing.tiff", tmp_path / "out.jpg", timeout=0)
