@@ -54,6 +54,29 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build Docker image
         run: docker build --tag photolut:ci .
+      - name: Run real Ultra HDR TIFF integration test
+        run: |
+          docker run --rm --entrypoint python photolut:ci -c '
+          from pathlib import Path
+          import tempfile
+          import numpy as np
+          import tifffile
+          from hdr_photo import export_ultrahdr
+
+          with tempfile.TemporaryDirectory() as directory:
+              root = Path(directory)
+              source = root / "fixture.tiff"
+              output = root / "fixture-ultrahdr.jpg"
+              pixels = np.zeros((32, 48, 3), dtype=np.uint16)
+              pixels[..., 0] = np.linspace(5000, 62000, 48, dtype=np.uint16)
+              pixels[..., 1] = 28000
+              pixels[..., 2] = 42000
+              tifffile.imwrite(source, pixels, photometric="rgb")
+              result = export_ultrahdr(source, output)
+              assert output.is_file() and output.stat().st_size > 100
+              assert result["gain_map_verified"] is True
+              print(result)
+          '
       - name: Start container
         run: docker run --detach --name photolut-ci --publish 127.0.0.1:8000:8000 photolut:ci
       - name: Verify container runs unprivileged
