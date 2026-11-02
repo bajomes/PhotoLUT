@@ -20,7 +20,8 @@ docker compose down
 
 - Recognized RAW extensions: CR2, CR3, NEF, ARW, SRF, SR2, DNG, ORF, RW2, RAF, PEF, and 3FR. Successful decoding depends on the exact camera model being supported by rawpy/LibRaw.
 - 3D `.cube` LUTs, trilinear interpolation, and adjustable LUT intensity with a live preview of the first selected RAW photo.
-- 16-bit TIFF and high-quality JPEG exports.
+- 16-bit TIFF and high-quality JPEG exports from the RAW batch workflow.
+- Experimental Ultra HDR JPEG export from single-page 16-bit RGB/RGBA TIFF, with JPEG quality and Max Boost controls; see [Ultra HDR photo export](docs/ultrahdr-photo-export.md).
 - Before/after comparison slider, job progress, and ZIP download.
 - sRGB ICC profile embedding and best-effort metadata copying with ExifTool.
 - Original input filenames are retained for the result cards; output filenames are normalized for portable filesystem use.
@@ -34,7 +35,7 @@ docker compose down
 
 ## Verification coverage
 
-GitHub Actions tests real RAW decoding and exports with two Nikon NEF samples and one Canon CR2 sample. The integration checks cover identity and creative LUTs, 16-bit TIFF pixels, JPEG output, embedded sRGB profiles, orientation, and selected camera metadata. The CI suite does not verify every listed extension or every camera model; validate samples from each target camera before relying on it for production work. A synthetic HLG video integration test generates a short 10-bit BT.2020/HLG clip, runs the real FFmpeg LUT export, and verifies the resulting HEVC Main 10/BT.709 metadata and AAC audio. A separate CI job builds the Docker image and smoke-tests the web UI and OpenAPI schema.
+GitHub Actions tests real RAW decoding and exports with two Nikon NEF samples and one Canon CR2 sample. The integration checks cover identity and creative LUTs, 16-bit TIFF pixels, JPEG output, embedded sRGB profiles, orientation, and selected camera metadata. The CI suite does not verify every listed extension or every camera model; validate samples from each target camera before relying on it for production work. A synthetic HLG video integration test generates a short 10-bit BT.2020/HLG clip, runs the real FFmpeg LUT export, and verifies the resulting HEVC Main 10/BT.709 metadata and AAC audio. A separate CI job builds the Docker image, smoke-tests the web UI and OpenAPI schema, and exercises the Ultra HDR panel in headless Chromium.
 
 When running `pytest -q` locally without sample files in `test-data/`, the real-RAW integration cases are skipped. Set `PHOTOLUT_TEST_RAW_DIR` to a directory containing the three fixture files to run them locally.
 
