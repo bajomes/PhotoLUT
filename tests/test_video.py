@@ -48,7 +48,7 @@ def test_normalize_identifies_pq_hdr10_and_4k30():
     assert result["hdr_format"] == "HDR10 / PQ"
     assert result["hdr_metadata_complete"] is True
     assert result["is_4k30_or_higher"] is True
-    assert result["recommended_path"] == "preserve_hdr"
+    assert result["recommended_path"] == "inspect_color_metadata"
 
 
 def test_normalize_does_not_call_sdr_hdr_or_force_upscale():
@@ -116,35 +116,6 @@ def test_video_filter_keeps_ten_bit_and_applies_intensity(tmp_path: Path):
     assert "lut3d=" in graph
     assert "A*(1-0.350000)+B*0.350000" in graph
     assert "format=yuv420p10le[outv]" in graph
-
-
-def test_preserve_hdr_rejects_unconfirmed_source(tmp_path: Path):
-    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
-    source.write_bytes(b"video")
-    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-        "video.inspect_video", return_value={"hdr_metadata_complete": False}
-    ), patch("video.subprocess.run") as run:
-        with pytest.raises(ValueError, match="requires confirmed"):
-            video.preserve_hdr_video(source, output)
-    run.assert_not_called()
-
-
-def test_preserve_hdr_stream_copies_and_verifies_metadata(tmp_path: Path):
-    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
-    source.write_bytes(b"video")
-    metadata = {"hdr_metadata_complete": True, "codec": "hevc", "color_transfer": "arib-std-b67",
-                "color_primaries": "bt2020", "color_matrix": "bt2020nc", "bit_depth": 10}
-    def fake_run(command, **kwargs):
-        Path(command[-1]).write_bytes(b"mp4")
-        assert "copy" in command
-        assert "-tag:v" in command and "hvc1" in command
-        return subprocess.CompletedProcess(command, 0, "", "")
-    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-        "video.inspect_video", side_effect=[metadata, metadata]
-    ), patch("video.subprocess.run", side_effect=fake_run):
-        result = video.preserve_hdr_video(source, output)
-    assert result["hdr_metadata_complete"] is True
-    assert output.read_bytes() == b"mp4"
 
 
 def test_transcode_rejects_dolby_vision_before_ffmpeg(tmp_path: Path):
@@ -222,32 +193,6 @@ def test_normalize_preserves_hdr_mastering_and_dolby_vision_side_data():
     assert result["dolby_vision_profile"] == 8
 
 
-def test_preserve_hdr_rejects_changed_mastering_metadata(tmp_path: Path):
-    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
-    source.write_bytes(b"video")
-    source_metadata = {
-        "hdr_metadata_complete": True, "codec": "hevc",
-        "color_transfer": "smpte2084", "color_primaries": "bt2020",
-        "color_matrix": "bt2020nc", "bit_depth": 10,
-        "hdr_side_data": [{"side_data_type": "Content light level metadata",
-                           "max_content": 1000, "max_average": 400}],
-    }
-    output_metadata = {**source_metadata, "hdr_side_data": []}
-
-    def fake_run(command, **kwargs):
-        Path(command[-1]).write_bytes(b"mp4")
-        return subprocess.CompletedProcess(command, 0, "", "")
-
-    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-        "video.inspect_video", side_effect=[source_metadata, output_metadata]
-    ), patch("video.subprocess.run", side_effect=fake_run):
-        with pytest.raises(RuntimeError, match="hdr_side_data"):
-            video.preserve_hdr_video(source, output)
-
-    assert not output.exists()
-
-
-
 def test_transcode_rejects_unexpected_h264_output(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
@@ -271,38 +216,6 @@ def test_transcode_rejects_unexpected_h264_output(tmp_path: Path):
         with pytest.raises(RuntimeError, match="codec: expected 'hevc', got 'h264'"):
             video.transcode_hlg_video(source, lut, output, 1.0)
 
-    assert not output.exists()
-
-
-def test_preserve_hdr_removes_partial_output_when_ffmpeg_fails(tmp_path: Path):
-    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
-    source.write_bytes(b"video")
-    metadata = {"hdr_metadata_complete": True, "codec": "hevc"}
-    def fake_run(command, **kwargs):
-        Path(command[-1]).write_bytes(b"partial")
-        raise subprocess.CalledProcessError(1, command, stderr="mux failed")
-    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-        "video.inspect_video", return_value=metadata
-    ), patch("video.subprocess.run", side_effect=fake_run):
-        with pytest.raises(ValueError, match="mux failed"):
-            video.preserve_hdr_video(source, output)
-    assert not output.exists()
-
-
-def test_preserve_hdr_removes_output_when_reprobe_fails(tmp_path: Path):
-    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
-    source.write_bytes(b"video")
-    metadata = {"hdr_metadata_complete": True, "codec": "hevc", "color_transfer": "arib-std-b67",
-                "color_primaries": "bt2020", "color_matrix": "bt2020nc", "bit_depth": 10,
-                "hdr_side_data": []}
-    def fake_run(command, **kwargs):
-        Path(command[-1]).write_bytes(b"mp4")
-        return subprocess.CompletedProcess(command, 0, "", "")
-    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-        "video.inspect_video", side_effect=[metadata, RuntimeError("ffprobe failed")]
-    ), patch("video.subprocess.run", side_effect=fake_run):
-        with pytest.raises(RuntimeError, match="ffprobe failed"):
-            video.preserve_hdr_video(source, output)
     assert not output.exists()
 
 
