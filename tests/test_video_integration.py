@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -52,8 +53,9 @@ def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
         "-vf",
         "zscale=matrixin=bt709:transferin=bt709:primariesin=bt709:"
         "matrix=bt2020nc:transfer=arib-std-b67:primaries=bt2020,"
+        "rangein=limited:matrix=bt2020nc:transfer=arib-std-b67:primaries=bt2020:range=limited,"
         "format=yuv420p10le",
-        "-c:v", "libx265", "-preset", "ultrafast",
+        "-c:v", "libx265", "-preset", "ultrafast", "-crf", "12",
         "-x265-params", "log-level=error",
         "-color_primaries", "bt2020", "-color_trc", "arib-std-b67",
         "-colorspace", "bt2020nc", "-c:a", "aac", str(source),
@@ -88,3 +90,17 @@ def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
     }
     assert ("video", "hevc") in streams or ("hevc", "video") in streams
     assert ("audio", "aac") in streams or ("aac", "audio") in streams
+
+    # The identity LUT must leave a correctly converted HLG signal visually
+    # close to the source after the decode/encode round trip.
+    comparison = subprocess.run(
+        [
+            ffmpeg, "-hide_banner", "-i", str(source), "-i", str(output),
+            "-filter_complex", "[0:v:0][1:v:0]psnr=shortest=1",
+            "-an", "-f", "null", "-",
+        ],
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+    match = re.search(r"average:([0-9.]+)", comparison.stderr)
+    assert match, comparison.stderr
+    assert float(match.group(1)) > 30.0, comparison.stderr
