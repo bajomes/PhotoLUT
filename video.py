@@ -244,7 +244,79 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         raise RuntimeError("FFmpeg did not produce a valid output file.")
 
 
-@router.post("/process")
+
+
+def preserve_hdr_video(source: Path, output: Path) -> dict[str, Any]:
+    """Remux confirmed HDR video without re-encoding, preserving original HDR pixels."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("FFmpeg is not installed.")
+    source_metadata = inspect_video(source)
+    if not source_metadata.get("hdr_metadata_complete"):
+        raise ValueError("HDR preservation requires confirmed HLG or PQ, BT.2020, and at least 10-bit input.")
+    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
+               "-map", "0:v:0", "-map", "0:a?", "-map_metadata", "0", "-c", "copy",
+               "-movflags", "+faststart"]
+    if source_metadata.get("codec") == "hevc":
+        command += ["-tag:v", "hvc1"]
+    command.append(str(output))
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True,
+                       timeout=VIDEO_PROCESS_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("HDR remux exceeded the 20-minute time limit.") from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or "").strip()
+        raise ValueError(detail[-1000:] or "FFmpeg could not preserve this HDR video in MP4.") from exc
+    if not output.is_file() or output.stat().st_size == 0:
+        raise RuntimeError("FFmpeg did not produce a valid HDR MP4.")
+    output_metadata = inspect_video(output)
+    if not output_metadata.get("hdr_metadata_complete"):
+        raise RuntimeError("HDR metadata verification failed after MP4 remux; the output was rejected.")
+    for key in ("color_transfer", "color_primaries", "color_matrix", "bit_depth"):
+        if output_metadata.get(key) != source_metadata.get(key):
+            raise RuntimeError(f"HDR verification mismatch for {key}; the output was rejected.")
+    return output_metadata
+
+
+@router.post("/preserve-hdr")
+async def preserve_uploaded_hdr_video(video_file: UploadFile = File(...)) -> FileResponse:
+    """Create an MP4 container copy of a confirmed HDR source without altering video frames."""
+    filename = Path((video_file.filename or "video").replace(chr(92), "/")).name
+    extension = Path(filename).suffix.lower()
+    if extension not in SUPPORTED_VIDEO_EXTENSIONS:
+        raise HTTPException(400, "Supported video formats: MP4, MOV, M4V, and MKV.")
+    temp_dir = Path(tempfile.mkdtemp(prefix="photolut-hdr-preserve-"))
+    source = temp_dir / f"input{extension}"
+    output = temp_dir / "photolut_hdr_preserved.mp4"
+    try:
+        size = 0
+        with source.open("wb") as stream:
+            while chunk := await video_file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_VIDEO_BYTES:
+                    raise HTTPException(413, "Video exceeds the 512 MiB processing limit.")
+                stream.write(chunk)
+        if size == 0:
+            raise HTTPException(400, "The uploaded video is empty.")
+        try:
+            metadata = await asyncio.to_thread(preserve_hdr_video, source, output)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        from starlette.background import BackgroundTask
+        return FileResponse(output, media_type="video/mp4",
+                            filename=f"{Path(filename).stem}_photolut_hdr_preserved.mp4",
+                            background=BackgroundTask(shutil.rmtree, temp_dir, ignore_errors=True),
+                            headers={"X-PhotoLUT-HDR-Verified": "true",
+                                     "X-PhotoLUT-HDR-Transfer": str(metadata["color_transfer"])})
+    except BaseException:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
+    finally:
+        await video_file.close()
+\n@router.post("/process")
 async def process_uploaded_video(
     background_tasks: BackgroundTasks,
     video_file: UploadFile = File(...),
