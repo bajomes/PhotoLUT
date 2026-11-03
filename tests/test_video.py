@@ -224,6 +224,8 @@ def test_preserve_hdr_rejects_changed_mastering_metadata(tmp_path: Path):
         with pytest.raises(RuntimeError, match="hdr_side_data"):
             video.preserve_hdr_video(source, output)
 
+    assert not output.exists()
+
 
 
 def test_transcode_rejects_unexpected_h264_output(tmp_path: Path):
