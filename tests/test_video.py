@@ -164,7 +164,11 @@ def test_transcode_invokes_ffmpeg_as_ten_bit_hlg_bt2020(tmp_path: Path):
     ), patch("video.core.parse_cube"), patch("video.subprocess.run", side_effect=fake_run) as run:
         video.transcode_hlg_video(source, lut, output, 0.5)
     command = run.call_args.args[0]
-    assert "-pix_fmt" in command and command[command.index("-pix_fmt") + 1] == "yuv420p10le"
+    assert command[command.index("-c:v") + 1] == "hevc_nvenc"
+    assert command[command.index("-profile:v") + 1] == "main10"
+    assert command[command.index("-pix_fmt") + 1] == "p010le"
+    assert command[command.index("-preset") + 1] == "p5"
+    assert command[command.index("-cq") + 1] == "19"
     assert command[command.index("-color_trc") + 1] == "arib-std-b67"
     assert command[command.index("-color_primaries") + 1] == "bt2020"
     assert command[command.index("-colorspace") + 1] == "bt2020nc"
@@ -265,3 +269,35 @@ def test_hlg_filter_does_not_tone_map_to_sdr(tmp_path: Path):
     assert "transfer=arib-std-b67" in graph
     assert "primaries=bt2020" in graph
     assert "format=yuv420p10le[outv]" in graph
+
+
+
+def test_transcode_falls_back_to_x265_when_nvenc_is_unavailable(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8)
+
+    source_metadata = {"hlg_metadata_complete": True}
+    output_metadata = {
+        "codec": "hevc", "codec_profile": "Main 10",
+        "pixel_format": "yuv420p10le", "bit_depth": 10,
+        "color_transfer": "arib-std-b67", "color_primaries": "bt2020",
+        "color_matrix": "bt2020nc",
+    }
+
+    def fake_run(command, **kwargs):
+        if "hevc_nvenc" in command:
+            raise subprocess.CalledProcessError(1, command, stderr="Cannot load libcuda")
+        Path(command[-1]).write_bytes(b"cpu-mp4")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", side_effect=[source_metadata, output_metadata]
+    ), patch("video.core.parse_cube"), patch("video.subprocess.run", side_effect=fake_run) as run:
+        video.transcode_hlg_video(source, lut, output, 0.5)
+
+    assert run.call_count == 2
+    cpu_command = run.call_args_list[1].args[0]
+    assert cpu_command[cpu_command.index("-c:v") + 1] == "libx265"
+    assert cpu_command[cpu_command.index("-pix_fmt") + 1] == "yuv420p10le"
+    assert output.read_bytes() == b"cpu-mp4"
