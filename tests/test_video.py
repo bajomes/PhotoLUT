@@ -275,7 +275,7 @@ def test_hlg_filter_does_not_tone_map_to_sdr(tmp_path: Path):
 def test_transcode_falls_back_to_x265_when_nvenc_is_unavailable(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
-    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8)
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
 
     source_metadata = {"hlg_metadata_complete": True}
     output_metadata = {
