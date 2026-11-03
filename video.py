@@ -212,22 +212,23 @@ VIDEO_PROCESS_TIMEOUT_SECONDS = 20 * 60
 
 
 def _ffmpeg_filter(lut_path: Path, intensity: float) -> str:
-    """Convert HLG/BT.2020 to SDR BT.709, apply a display-referred 3D LUT."""
+    """Apply an HLG/BT.2020-domain LUT and encode back to HLG/BT.2020."""
     lut = str(lut_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
     amount = format(intensity, ".6f")
     return (
-        "[0:v]zscale=t=linear:npl=1000,format=gbrpf32le,"
-        "tonemap=mobius:desat=0,"
-        "zscale=p=bt709:t=bt709:m=bt709:r=tv,"
+        "[0:v]zscale=matrixin=bt2020nc:transferin=arib-std-b67:primariesin=bt2020:"
+        "matrix=gbr:transfer=arib-std-b67:primaries=bt2020:range=full,"
         "format=gbrpf32le,split=2[base][forlut];"
         f"[forlut]lut3d=file='{lut}':interp=tetrahedral[graded];"
         f"[base][graded]blend=all_expr='A*(1-{amount})+B*{amount}',"
+        "zscale=matrixin=gbr:transferin=arib-std-b67:primariesin=bt2020:rangein=full:"
+        "matrix=bt2020nc:transfer=arib-std-b67:primaries=bt2020:range=limited,"
         "format=yuv420p10le[outv]"
     )
 
 
 def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: float) -> None:
-    """Render HLG source through an SDR BT.709 transform and a .cube LUT."""
+    """Apply an HLG/BT.2020 .cube LUT and export verified 10-bit HLG HEVC."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("FFmpeg is not installed.")
@@ -248,8 +249,10 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         "-i", str(source), "-filter_complex", _ffmpeg_filter(lut_path, intensity),
         "-map", "[outv]", "-map", "0:a?", "-c:v", "libx265",
         "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p10le",
-        "-tag:v", "hvc1", "-color_primaries", "bt709",
-        "-color_trc", "bt709", "-colorspace", "bt709",
+        "-tag:v", "hvc1", "-color_range", "tv",
+        "-color_primaries", "bt2020", "-color_trc", "arib-std-b67",
+        "-colorspace", "bt2020nc",
+        "-x265-params", "hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
     ]
     try:
@@ -271,9 +274,9 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
             "codec_profile": "Main 10",
             "pixel_format": "yuv420p10le",
             "bit_depth": 10,
-            "color_transfer": "bt709",
-            "color_primaries": "bt709",
-            "color_matrix": "bt709",
+            "color_transfer": "arib-std-b67",
+            "color_primaries": "bt2020",
+            "color_matrix": "bt2020nc",
         }
         mismatches = [
             f"{key}: expected {value!r}, got {output_metadata.get(key)!r}"
@@ -383,7 +386,7 @@ async def process_uploaded_video(
     cube: UploadFile = File(...),
     intensity: float = Form(1.0),
 ) -> FileResponse:
-    """Apply a .cube LUT to confirmed HLG footage and export SDR BT.709 HEVC 10-bit MP4."""
+    """Apply an HLG/BT.2020 .cube LUT and export HDR HLG HEVC Main 10 MP4."""
     filename = Path((video_file.filename or "video").replace(chr(92), "/")).name
     extension = Path(filename).suffix.lower()
     if extension not in SUPPORTED_VIDEO_EXTENSIONS:
@@ -402,7 +405,7 @@ async def process_uploaded_video(
         raise
     source = temp_dir / f"input{extension}"
     lut_path = temp_dir / "look.cube"
-    output = temp_dir / "photolut_sdr_bt709_10bit.mp4"
+    output = temp_dir / "photolut_hdr_hlg_bt2020_10bit.mp4"
     try:
         total = 0
         with source.open("wb") as stream:
@@ -432,8 +435,9 @@ async def process_uploaded_video(
         background_tasks.add_task(shutil.rmtree, temp_dir, ignore_errors=True)
         return FileResponse(
             output, media_type="video/mp4",
-            filename=f"{Path(filename).stem}_photolut_sdr_10bit.mp4",
+            filename=f"{Path(filename).stem}_photolut_hdr_hlg_10bit.mp4",
             background=background_tasks,
+            headers={"X-PhotoLUT-HDR-Verified": "true", "X-PhotoLUT-HDR-Transfer": "arib-std-b67"},
         )
     except BaseException:
         shutil.rmtree(temp_dir, ignore_errors=True)
