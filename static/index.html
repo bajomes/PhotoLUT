@@ -346,12 +346,12 @@ const processedVideoPreview=$("processedVideoPreview");
 function clearProcessedVideoPreview(){if(processedVideoUrl){URL.revokeObjectURL(processedVideoUrl);processedVideoUrl=null;}processedVideoPreview.removeAttribute("src");processedVideoPreview.load();$("videoPreviewPanel").hidden=true;}
 window.addEventListener("beforeunload",clearProcessedVideoPreview);
 $("downloadProcessedVideo").addEventListener("click",()=>{if(!processedVideoUrl)return;const link=document.createElement("a");link.href=processedVideoUrl;link.download=processedVideoName;document.body.appendChild(link);link.click();link.remove();});
-let videoHdrConfirmed=false;
+let videoHdrConfirmed=false,videoHlgConfirmed=false;
 const videoLutInput=$("videoLutInput");
 const videoLutIntensity=$("videoLutIntensity");
 const processVideoBtn=$("processVideoBtn");
-videoLutInput.addEventListener("change",()=>{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length);});
-videoInspectInput.addEventListener("change",()=>{videoHdrConfirmed=false;preserveHdrBtn.disabled=true;processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length);});
+videoLutInput.addEventListener("change",()=>{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length&&videoHlgConfirmed);});
+videoInspectInput.addEventListener("change",()=>{videoHdrConfirmed=false;videoHlgConfirmed=false;preserveHdrBtn.disabled=true;processVideoBtn.disabled=true;});
 videoLutIntensity.addEventListener("input",()=>{$("videoLutIntensityValue").textContent=videoLutIntensity.value+"%";});
 processVideoBtn.addEventListener("click",async()=>{
   const source=videoInspectInput.files?.[0],lut=videoLutInput.files?.[0];if(!source||!lut)return;
@@ -369,7 +369,7 @@ processVideoBtn.addEventListener("click",async()=>{
     $("videoPreviewPanel").hidden=false;
     $("videoProcessStatus").textContent="Export complete. Preview the SDR BT.709 HEVC 10-bit MP4 below; download only when ready.";
   }catch(error){$("videoProcessStatus").textContent=error.message||String(error);}
-  finally{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length);}
+  finally{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length&&videoHlgConfirmed);}
 });
 
 
@@ -385,9 +385,10 @@ preserveHdrBtn.addEventListener("click",async()=>{
     link.href=url;link.download=source.name.replace(/\\.[^.]+$/,"")+"_photolut_hdr_preserved.mp4";document.body.appendChild(link);link.click();link.remove();
     setTimeout(()=>URL.revokeObjectURL(url),60000);$("preserveHdrStatus").textContent="Verified HDR MP4 downloaded. Video frames were stream-copied without re-encoding.";
   }catch(error){$("preserveHdrStatus").textContent=error.message||String(error);}
-  finally{preserveHdrBtn.disabled=!videoInspectInput.files?.length;}
+  finally{preserveHdrBtn.disabled=!videoInspectInput.files?.length||!videoHdrConfirmed;}
 });
-\n$("inspectVideoBtn").addEventListener("click",async()=>{
+
+$("inspectVideoBtn").addEventListener("click",async()=>{
   const file=videoInspectInput.files&&videoInspectInput.files[0];if(!file)return;
   $("inspectVideoBtn").disabled=true;$("videoInspectStatus").textContent="Uploading and inspecting metadata…";$("videoInspectResult").hidden=true;
   try{
@@ -395,7 +396,7 @@ preserveHdrBtn.addEventListener("click",async()=>{
     const response=await fetch("/api/video/inspect",{method:"POST",body:form});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.detail||"Video inspection failed ("+response.status+")");
-    videoHdrConfirmed=Boolean(data.hdr_metadata_complete);preserveHdrBtn.disabled=!videoHdrConfirmed;
+    videoHdrConfirmed=Boolean(data.hdr_metadata_complete);videoHlgConfirmed=Boolean(data.hlg_metadata_complete);preserveHdrBtn.disabled=!videoHdrConfirmed;processVideoBtn.disabled=!(videoHlgConfirmed&&videoLutInput.files?.length);
     const result=$("videoInspectResult");result.replaceChildren();
     const heading=document.createElement("h3");heading.textContent="Inspection result";result.append(heading);
     const status=document.createElement("div");status.className="video-hlg-status "+(data.hdr_metadata_complete?"good":"warn");
