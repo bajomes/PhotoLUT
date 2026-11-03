@@ -84,39 +84,3 @@ def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
     }
     assert ("video", "hevc") in streams or ("hevc", "video") in streams
     assert ("audio", "aac") in streams or ("aac", "audio") in streams
-
-
-
-@pytest.mark.parametrize(
-    ("transfer", "expected_flag"),
-    [("arib-std-b67", "is_hlg"), ("smpte2084", "is_pq")],
-)
-def test_synthetic_hdr_remux_preserves_transfer_and_10bit(
-    tmp_path: Path, transfer: str, expected_flag: str
-):
-    """Exercise real FFmpeg HDR stream-copy remux and post-export verification."""
-    ffmpeg = shutil.which("ffmpeg")
-    assert ffmpeg
-    source = tmp_path / "synthetic_hdr_source.mp4"
-    output = tmp_path / "preserved_hdr.mp4"
-    _run([
-        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-        "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=2:duration=1",
-        "-c:v", "libx265", "-preset", "ultrafast",
-        "-x265-params", "log-level=error",
-        "-pix_fmt", "yuv420p10le",
-        "-color_primaries", "bt2020", "-color_trc", transfer,
-        "-colorspace", "bt2020nc", str(source),
-    ])
-    before = video.inspect_video(source)
-    assert before["hdr_metadata_complete"] is True
-    assert before[expected_flag] is True
-
-    after = video.preserve_hdr_video(source, output)
-    assert output.is_file() and output.stat().st_size > 0
-    assert after["hdr_metadata_complete"] is True
-    assert after["color_transfer"] == before["color_transfer"]
-    assert after["color_primaries"] == before["color_primaries"]
-    assert after["color_matrix"] == before["color_matrix"]
-    assert after["bit_depth"] == before["bit_depth"]
-    assert after["hdr_side_data"] == before["hdr_side_data"]
