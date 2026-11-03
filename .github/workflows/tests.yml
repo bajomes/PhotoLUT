@@ -87,6 +87,10 @@ jobs:
           grep -q 'id="previewCompare"' /tmp/photolut-index.html
           grep -q 'id="videoCompareStage"' /tmp/photolut-index.html
           grep -q 'id="videoCompareSeek"' /tmp/photolut-index.html
+          grep -q 'data-studio-mode="photos"' /tmp/photolut-index.html
+          grep -q 'data-studio-mode="video"' /tmp/photolut-index.html
+          grep -q 'id="videoPreviewPanel"' /tmp/photolut-index.html
+          grep -q '.shell\[data-mode="video"\] #inputArea' /tmp/photolut-index.html
           ! grep -q 'id="videoCompareSeconds"' /tmp/photolut-index.html
           ! grep -q 'id="preserveHdrBtn"' /tmp/photolut-index.html
           grep -q 'id="intensity"' /tmp/photolut-index.html
