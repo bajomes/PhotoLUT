@@ -61,19 +61,40 @@ def normalize_probe_data(payload: dict[str, Any]) -> dict[str, Any]:
     matrix = str(stream.get("color_space") or "unknown").lower()
     depth = _bit_depth(stream)
     is_hlg = transfer == "arib-std-b67"
-    hlg_metadata_complete = (
-        is_hlg and primaries == "bt2020"
+    is_pq = transfer in {"smpte2084", "smpte-st-2084"}
+    is_hdr = is_hlg or is_pq
+    hdr_metadata_complete = (
+        is_hdr and primaries == "bt2020"
         and matrix in {"bt2020nc", "bt2020_ncl"}
         and depth is not None and depth >= 10
     )
+    side_data = stream.get("side_data_list") or []
+    dolby_vision = next((item for item in side_data
+                         if "dovi" in str(item.get("side_data_type", "")).lower()
+                         or "dolby vision" in str(item.get("side_data_type", "")).lower()), None)
+    dv_profile = (dolby_vision or {}).get("dv_profile")
+    try:
+        fps_num, fps_den = str(stream.get("avg_frame_rate") or stream.get("r_frame_rate") or "0/1").split("/", 1)
+        fps = float(fps_num) / float(fps_den) if float(fps_den) else None
+    except (TypeError, ValueError, ZeroDivisionError):
+        fps = None
+    width, height = stream.get("width"), stream.get("height")
+    is_4k30 = bool(width and height and width >= 3840 and height >= 2160 and fps is not None and abs(fps - 30) <= 0.1)
+    hdr_format = ("Dolby Vision" if dolby_vision else
+                  "HDR10 / PQ" if is_pq else "HLG" if is_hlg else
+                  "SDR / BT.709" if transfer == "bt709" else "Unknown")
 
     warnings: list[str] = []
     if transfer == "unknown" or primaries == "unknown" or matrix == "unknown":
         warnings.append("Some color metadata is missing; confirm the source profile before grading.")
-    if is_hlg and not hlg_metadata_complete:
-        warnings.append("HLG transfer metadata was detected, but the BT.2020 matrix/primaries or 10-bit depth could not be confirmed.")
-    if not is_hlg:
-        warnings.append("The file is not tagged with the HLG transfer function; it will not be treated as HLG.")
+    if is_hdr and not hdr_metadata_complete:
+        warnings.append("An HDR transfer function was detected, but BT.2020 matrix/primaries or at least 10-bit depth could not be confirmed.")
+    if not is_hdr:
+        warnings.append("The file is not tagged as HLG or PQ HDR; it will not be treated as an HDR source.")
+    if dolby_vision and not is_pq:
+        warnings.append("Dolby Vision side data was found; verify the profile and base-layer compatibility before delivery.")
+    if not is_4k30:
+        warnings.append("The source is not confirmed as at least 3840×2160 at 30 fps; PhotoLUT will not force an upscale or frame-rate conversion during inspection.")
 
     fmt = payload.get("format") or {}
     return {
@@ -92,7 +113,16 @@ def normalize_probe_data(payload: dict[str, Any]) -> dict[str, Any]:
         "color_matrix": matrix,
         "color_range": stream.get("color_range") or "unknown",
         "is_hlg": is_hlg,
+        "is_pq": is_pq,
+        "is_hdr": is_hdr,
+        "hdr_format": hdr_format,
+        "hdr_metadata_complete": hdr_metadata_complete,
         "hlg_metadata_complete": hlg_metadata_complete,
+        "dolby_vision_detected": dolby_vision is not None,
+        "dolby_vision_profile": dv_profile,
+        "frame_rate_numeric": round(fps, 3) if fps is not None else None,
+        "is_4k30_or_higher": is_4k30,
+        "recommended_path": ("preserve_hdr" if hdr_metadata_complete else "inspect_color_metadata" if is_hdr else "sdr_to_hdr_optional" if transfer == "bt709" else "manual_color_confirmation"),
         "warnings": warnings,
     }
 
@@ -107,7 +137,7 @@ def inspect_video(path: Path) -> dict[str, Any]:
         executable, "-v", "error", "-select_streams", "v:0",
         "-show_entries",
         "stream=codec_type,codec_name,profile,width,height,pix_fmt,bits_per_raw_sample,"
-        "avg_frame_rate,r_frame_rate,color_range,color_space,color_transfer,color_primaries:"
+        "avg_frame_rate,r_frame_rate,color_range,color_space,color_transfer,color_primaries,side_data_list:"
         "format=duration,format_name",
         "-of", "json", str(path),
     ]
