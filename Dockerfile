@@ -1,9 +1,14 @@
-FROM python:3.12-slim
+FROM python:3.12-slim-trixie
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libraw-dev \
-    libimage-exiftool-perl \
-    ffmpeg \
+RUN echo "deb http://deb.debian.org/debian sid main" > /etc/apt/sources.list.d/sid.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libraw-dev \
+        libimage-exiftool-perl \
+        libvulkan1 \
+        ffmpeg/sid \
+    && ffmpeg -hide_banner -filters 2>&1 | grep -q libplacebo \
+    && ffmpeg -hide_banner -h filter=libplacebo 2>&1 | grep -q lut \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system photolut && useradd --system --gid photolut --home-dir /app --no-create-home photolut
