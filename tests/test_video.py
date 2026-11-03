@@ -161,7 +161,7 @@ def test_transcode_rejects_dolby_vision_before_ffmpeg(tmp_path: Path):
     assert not output.exists()
 
 
-def test_transcode_rejects_unconfirmed_hlg_before_ffmpeg():
+def test_transcode_rejects_unconfirmed_hlg_before_ffmpeg(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
     lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
