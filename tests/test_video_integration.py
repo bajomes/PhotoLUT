@@ -19,7 +19,7 @@ def _run(command: list[str]) -> None:
     subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
 
 
-def test_synthetic_hlg_video_exports_real_10bit_bt709_mp4(tmp_path: Path):
+def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
     """Exercise FFmpeg, LUT parsing, HLG gating, encoding, and output metadata."""
     ffmpeg = shutil.which("ffmpeg")
     ffprobe = shutil.which("ffprobe")
@@ -66,9 +66,9 @@ def test_synthetic_hlg_video_exports_real_10bit_bt709_mp4(tmp_path: Path):
     assert result["codec"] == "hevc"
     assert result["bit_depth"] == 10
     assert result["pixel_format"] == "yuv420p10le"
-    assert result["color_primaries"] == "bt709"
-    assert result["color_transfer"] == "bt709"
-    assert result["color_matrix"] == "bt709"
+    assert result["color_primaries"] == "bt2020"
+    assert result["color_transfer"] == "arib-std-b67"
+    assert result["color_matrix"] == "bt2020nc"
 
     probe = subprocess.run(
         [

@@ -174,7 +174,7 @@ def test_transcode_rejects_unconfirmed_hlg_before_ffmpeg(tmp_path: Path):
     run.assert_not_called()
 
 
-def test_transcode_invokes_ffmpeg_as_ten_bit_bt709(tmp_path: Path):
+def test_transcode_invokes_ffmpeg_as_ten_bit_hlg_bt2020(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
     lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
@@ -185,8 +185,8 @@ def test_transcode_invokes_ffmpeg_as_ten_bit_bt709(tmp_path: Path):
     output_metadata = {
         "codec": "hevc", "codec_profile": "Main 10",
         "pixel_format": "yuv420p10le", "bit_depth": 10,
-        "color_transfer": "bt709", "color_primaries": "bt709",
-        "color_matrix": "bt709",
+        "color_transfer": "arib-std-b67", "color_primaries": "bt2020",
+        "color_matrix": "bt2020nc",
     }
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", side_effect=[source_metadata, output_metadata]
@@ -194,7 +194,13 @@ def test_transcode_invokes_ffmpeg_as_ten_bit_bt709(tmp_path: Path):
         video.transcode_hlg_video(source, lut, output, 0.5)
     command = run.call_args.args[0]
     assert "-pix_fmt" in command and command[command.index("-pix_fmt") + 1] == "yuv420p10le"
-    assert command[command.index("-color_trc") + 1] == "bt709"
+    assert command[command.index("-color_trc") + 1] == "arib-std-b67"
+    assert command[command.index("-color_primaries") + 1] == "bt2020"
+    assert command[command.index("-colorspace") + 1] == "bt2020nc"
+    graph = command[command.index("-filter_complex") + 1]
+    assert "tonemap=" not in graph
+    assert "transfer=arib-std-b67" in graph
+    assert "lut3d=" in graph
     assert output.read_bytes() == b"mp4"
 
 
@@ -329,3 +335,20 @@ def test_transcode_removes_output_when_reprobe_fails(tmp_path: Path):
         with pytest.raises(RuntimeError, match="ffprobe failed"):
             video.transcode_hlg_video(source, lut, output, 1.0)
     assert not output.exists()
+
+
+def test_builtin_natural_hlg_lut_is_valid_and_bounded():
+    lut = Path(__file__).resolve().parents[1] / "static" / "luts" / "photolut-natural-hlg-bt2020.cube"
+    parsed = video.core.parse_cube(lut)
+    assert parsed.size == 33
+    assert parsed.table.min() >= 0.0
+    assert parsed.table.max() <= 1.0
+
+
+def test_hlg_filter_does_not_tone_map_to_sdr(tmp_path: Path):
+    graph = video._ffmpeg_filter(tmp_path / "natural.cube", 1.0)
+    assert "tonemap=" not in graph
+    assert "bt709" not in graph
+    assert "transfer=arib-std-b67" in graph
+    assert "primaries=bt2020" in graph
+    assert "format=yuv420p10le[outv]" in graph
