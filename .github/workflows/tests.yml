@@ -87,5 +87,32 @@ jobs:
           grep -q 'id="downloadPicker"' /tmp/photolut-index.html
           grep -q 'family=Inter:wght@100..900' /tmp/photolut-index.html
           grep -q 'Process batch' /tmp/photolut-index.html
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+
+          class InlineScripts(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.in_script = False
+                  self.parts = []
+
+              def handle_starttag(self, tag, attrs):
+                  if tag == 'script' and not dict(attrs).get('src'):
+                      self.in_script = True
+
+              def handle_endtag(self, tag):
+                  if tag == 'script':
+                      self.in_script = False
+
+              def handle_data(self, data):
+                  if self.in_script:
+                      self.parts.append(data)
+
+          parser = InlineScripts()
+          parser.feed(Path('/tmp/photolut-index.html').read_text())
+          Path('/tmp/photolut-inline.js').write_text('\\n'.join(parser.parts))
+          PY
+          node --check /tmp/photolut-inline.js
           curl --fail --silent http://127.0.0.1:8000/openapi.json |
             python -c 'import json, sys; assert json.load(sys.stdin)["info"]["title"] == "PhotoLUT"'
