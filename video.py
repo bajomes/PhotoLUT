@@ -316,7 +316,8 @@ async def preserve_uploaded_hdr_video(video_file: UploadFile = File(...)) -> Fil
         raise
     finally:
         await video_file.close()
-\n@router.post("/process")
+
+@router.post("/process")
 async def process_uploaded_video(
     background_tasks: BackgroundTasks,
     video_file: UploadFile = File(...),
