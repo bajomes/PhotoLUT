@@ -60,7 +60,7 @@ def test_normalize_does_not_call_sdr_hdr_or_force_upscale():
     assert result["is_hdr"] is False
     assert result["hdr_format"] == "SDR / BT.709"
     assert result["is_4k30_or_higher"] is False
-    assert result["recommended_path"] == "sdr_to_hdr_optional"
+    assert result["recommended_path"] == "sdr_input"
 
 
 def test_hlg_transfer_without_complete_metadata_is_flagged():
@@ -251,4 +251,67 @@ def test_transcode_rejects_unexpected_h264_output(tmp_path: Path):
         with pytest.raises(RuntimeError, match="codec: expected 'hevc', got 'h264'"):
             video.transcode_hlg_video(source, lut, output, 1.0)
 
+    assert not output.exists()
+
+
+def test_preserve_hdr_removes_partial_output_when_ffmpeg_fails(tmp_path: Path):
+    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
+    source.write_bytes(b"video")
+    metadata = {"hdr_metadata_complete": True, "codec": "hevc"}
+    def fake_run(command, **kwargs):
+        Path(command[-1]).write_bytes(b"partial")
+        raise subprocess.CalledProcessError(1, command, stderr="mux failed")
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", return_value=metadata
+    ), patch("video.subprocess.run", side_effect=fake_run):
+        with pytest.raises(ValueError, match="mux failed"):
+            video.preserve_hdr_video(source, output)
+    assert not output.exists()
+
+
+def test_preserve_hdr_removes_output_when_reprobe_fails(tmp_path: Path):
+    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
+    source.write_bytes(b"video")
+    metadata = {"hdr_metadata_complete": True, "codec": "hevc", "color_transfer": "arib-std-b67",
+                "color_primaries": "bt2020", "color_matrix": "bt2020nc", "bit_depth": 10,
+                "hdr_side_data": []}
+    def fake_run(command, **kwargs):
+        Path(command[-1]).write_bytes(b"mp4")
+        return subprocess.CompletedProcess(command, 0, "", "")
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", side_effect=[metadata, RuntimeError("ffprobe failed")]
+    ), patch("video.subprocess.run", side_effect=fake_run):
+        with pytest.raises(RuntimeError, match="ffprobe failed"):
+            video.preserve_hdr_video(source, output)
+    assert not output.exists()
+
+
+def test_transcode_removes_partial_output_when_ffmpeg_fails(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", return_value={"hlg_metadata_complete": True}
+    ), patch("video.core.parse_cube"), patch("video.subprocess.run") as run:
+        def fake_run(command, **kwargs):
+            Path(command[-1]).write_bytes(b"partial")
+            raise subprocess.CalledProcessError(1, command, stderr="encode failed")
+        run.side_effect = fake_run
+        with pytest.raises(ValueError, match="encode failed"):
+            video.transcode_hlg_video(source, lut, output, 1.0)
+    assert not output.exists()
+
+
+def test_transcode_removes_output_when_reprobe_fails(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
+    def fake_run(command, **kwargs):
+        Path(command[-1]).write_bytes(b"mp4")
+        return subprocess.CompletedProcess(command, 0, "", "")
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", side_effect=[{"hlg_metadata_complete": True}, RuntimeError("ffprobe failed")]
+    ), patch("video.core.parse_cube"), patch("video.subprocess.run", side_effect=fake_run):
+        with pytest.raises(RuntimeError, match="ffprobe failed"):
+            video.transcode_hlg_video(source, lut, output, 1.0)
     assert not output.exists()
