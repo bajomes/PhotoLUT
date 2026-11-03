@@ -146,7 +146,7 @@ button,input,select,textarea{letter-spacing:inherit}
         <input type="file" id="videoLutInput" accept=".cube">
         <div class="range-head"><label for="videoLutIntensity">Video LUT intensity</label><strong id="videoLutIntensityValue">100%</strong></div>
         <input type="range" id="videoLutIntensity" min="0" max="100" value="100">
-        <p class="hint">HDR preservation copies confirmed HLG/PQ video frames and available HDR metadata unchanged. It does not apply a LUT or enhance image quality. Separate LUT export below remains SDR BT.709.</p>
+        <p class="hint">HDR preservation copies confirmed HLG/PQ video frames and available HDR metadata unchanged. It does not apply a LUT or enhance image quality. Separate LUT export below remains SDR BT.709. Dolby Vision LUT re-encoding is disabled because the dynamic metadata cannot be preserved; use the original HDR preservation option.</p>
         <button class="primary" id="preserveHdrBtn" type="button" disabled>Preserve original HDR · MP4</button>
         <div class="progress-status" id="preserveHdrStatus" role="status" aria-live="polite"></div>
         <button class="primary" id="processVideoBtn" type="button" disabled>Apply LUT & export 10-bit video</button>
@@ -349,16 +349,16 @@ const processedVideoPreview=$("processedVideoPreview");
 function clearProcessedVideoPreview(){if(processedVideoUrl){URL.revokeObjectURL(processedVideoUrl);processedVideoUrl=null;}processedVideoPreview.removeAttribute("src");processedVideoPreview.load();$("videoPreviewPanel").hidden=true;}
 window.addEventListener("beforeunload",clearProcessedVideoPreview);
 $("downloadProcessedVideo").addEventListener("click",()=>{if(!processedVideoUrl)return;const link=document.createElement("a");link.href=processedVideoUrl;link.download=processedVideoName;document.body.appendChild(link);link.click();link.remove();});
-let videoHdrConfirmed=false,videoHlgConfirmed=false;
+let videoHdrConfirmed=false,videoHlgConfirmed=false,videoDolbyVisionDetected=false;
 const videoLutInput=$("videoLutInput");
 const videoLutIntensity=$("videoLutIntensity");
 const processVideoBtn=$("processVideoBtn");
 videoLutInput.addEventListener("change",()=>{
-  processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length&&videoHlgConfirmed);
+  processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length&&videoHlgConfirmed&&!videoDolbyVisionDetected);
   $("videoProcessStatus").textContent="";
   clearProcessedVideoPreview();
 });
-videoInspectInput.addEventListener("change",()=>{videoHdrConfirmed=false;videoHlgConfirmed=false;preserveHdrBtn.disabled=true;processVideoBtn.disabled=true;});
+videoInspectInput.addEventListener("change",()=>{videoHdrConfirmed=false;videoHlgConfirmed=false;videoDolbyVisionDetected=false;preserveHdrBtn.disabled=true;processVideoBtn.disabled=true;});
 videoLutIntensity.addEventListener("input",()=>{$("videoLutIntensityValue").textContent=videoLutIntensity.value+"%";});
 processVideoBtn.addEventListener("click",async()=>{
   const source=videoInspectInput.files?.[0],lut=videoLutInput.files?.[0];if(!source||!lut)return;
@@ -376,7 +376,7 @@ processVideoBtn.addEventListener("click",async()=>{
     $("videoPreviewPanel").hidden=false;
     $("videoProcessStatus").textContent="Export complete. Preview the SDR BT.709 HEVC 10-bit MP4 below; download only when ready.";
   }catch(error){$("videoProcessStatus").textContent=error.message||String(error);}
-  finally{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length&&videoHlgConfirmed);}
+  finally{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length&&videoHlgConfirmed&&!videoDolbyVisionDetected);}
 });
 
 
@@ -403,7 +403,7 @@ $("inspectVideoBtn").addEventListener("click",async()=>{
     const response=await fetch("/api/video/inspect",{method:"POST",body:form});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.detail||"Video inspection failed ("+response.status+")");
-    videoHdrConfirmed=Boolean(data.hdr_metadata_complete);videoHlgConfirmed=Boolean(data.hlg_metadata_complete);preserveHdrBtn.disabled=!videoHdrConfirmed;processVideoBtn.disabled=!(videoHlgConfirmed&&videoLutInput.files?.length);
+    videoHdrConfirmed=Boolean(data.hdr_metadata_complete);videoHlgConfirmed=Boolean(data.hlg_metadata_complete);videoDolbyVisionDetected=Boolean(data.dolby_vision_detected);preserveHdrBtn.disabled=!videoHdrConfirmed;processVideoBtn.disabled=!(videoHlgConfirmed&&!videoDolbyVisionDetected&&videoLutInput.files?.length);
     const result=$("videoInspectResult");result.replaceChildren();
     const heading=document.createElement("h3");heading.textContent="Inspection result";result.append(heading);
     const status=document.createElement("div");status.className="video-hlg-status "+(data.hdr_metadata_complete?"good":"warn");
