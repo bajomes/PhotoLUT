@@ -115,6 +115,10 @@ def test_video_filter_keeps_ten_bit_and_applies_intensity(tmp_path: Path):
     graph = video._ffmpeg_filter(lut, 0.35)
     assert "lut3d=" in graph
     assert "A*(1-0.350000)+B*0.350000" in graph
+    assert "[base_hlg]zscale=" in graph
+    assert "[graded_hlg]zscale=" in graph
+    assert "transfer=linear" in graph
+    assert "[mixed_linear]zscale=" in graph
     assert "format=yuv420p10le[outv]" in graph
 
 
@@ -267,6 +271,7 @@ def test_hlg_filter_does_not_tone_map_to_sdr(tmp_path: Path):
     assert "tonemap=" not in graph
     assert "bt709" not in graph
     assert "transfer=arib-std-b67" in graph
+    assert "transfer=linear" in graph
     assert "primaries=bt2020" in graph
     assert "format=yuv420p10le[outv]" in graph
 
