@@ -146,7 +146,9 @@ button,input,select,textarea{letter-spacing:inherit}
         <input type="file" id="videoLutInput" accept=".cube">
         <div class="range-head"><label for="videoLutIntensity">Video LUT intensity</label><strong id="videoLutIntensityValue">100%</strong></div>
         <input type="range" id="videoLutIntensity" min="0" max="100" value="100">
-        <p class="hint">Export: MP4 · HEVC Main 10 · SDR BT.709. HLG is tone-mapped to SDR before the LUT is applied; 10-bit output is retained.</p>
+        <p class="hint">HDR master: remux confirmed HLG/PQ to MP4 without re-encoding or changing image frames. Separate LUT export below remains SDR BT.709.</p>
+        <button class="primary" id="preserveHdrBtn" type="button" disabled>Preserve original HDR · MP4</button>
+        <div class="progress-status" id="preserveHdrStatus" role="status" aria-live="polite"></div>
         <button class="primary" id="processVideoBtn" type="button" disabled>Apply LUT & export 10-bit video</button>
         <div class="progress-status" id="videoProcessStatus" role="status" aria-live="polite"></div>
         <div class="video-preview-panel" id="videoPreviewPanel" hidden><video id="processedVideoPreview" controls playsinline preload="metadata"></video><div class="video-preview-actions"><button class="primary" id="downloadProcessedVideo" type="button">Download processed MP4</button><span class="hint">Preview only — no automatic download.</span></div></div>
@@ -369,7 +371,22 @@ processVideoBtn.addEventListener("click",async()=>{
   finally{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length);}
 });
 
-$("inspectVideoBtn").addEventListener("click",async()=>{
+
+const preserveHdrBtn=$("preserveHdrBtn");
+preserveHdrBtn.addEventListener("click",async()=>{
+  const source=videoInspectInput.files?.[0];if(!source)return;
+  preserveHdrBtn.disabled=true;$("preserveHdrStatus").textContent="Verifying HDR metadata and preparing a no-re-encode MP4…";
+  try{
+    const form=new FormData();form.append("video_file",source);
+    const response=await fetch("/api/video/preserve-hdr",{method:"POST",body:form});
+    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.detail||"HDR preservation failed ("+response.status+")");}
+    const blob=await response.blob();const url=URL.createObjectURL(blob);const link=document.createElement("a");
+    link.href=url;link.download=source.name.replace(/\\.[^.]+$/,"")+"_photolut_hdr_preserved.mp4";document.body.appendChild(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);$("preserveHdrStatus").textContent="Verified HDR MP4 downloaded. Video frames were stream-copied without re-encoding.";
+  }catch(error){$("preserveHdrStatus").textContent=error.message||String(error);}
+  finally{preserveHdrBtn.disabled=!videoInspectInput.files?.length;}
+});
+\n$("inspectVideoBtn").addEventListener("click",async()=>{
   const file=videoInspectInput.files&&videoInspectInput.files[0];if(!file)return;
   $("inspectVideoBtn").disabled=true;$("videoInspectStatus").textContent="Uploading and inspecting metadata…";$("videoInspectResult").hidden=true;
   try{
@@ -388,7 +405,7 @@ $("inspectVideoBtn").addEventListener("click",async()=>{
     if(Array.isArray(data.warnings)&&data.warnings.length){const warning=document.createElement("p");warning.className="hint";warning.textContent=data.warnings.join(" ");result.append(warning)}
     $("videoInspectStatus").textContent="Inspection complete. No video frames were modified.";result.hidden=false;
   }catch(error){$("videoInspectStatus").textContent=error.message||String(error)}
-  finally{$("inspectVideoBtn").disabled=!videoInspectInput.files?.length||videoInspectInput.files[0].size>512*1024*1024}
+  finally{$("inspectVideoBtn").disabled=!videoInspectInput.files?.length||videoInspectInput.files[0].size>512*1024*1024;preserveHdrBtn.disabled=!videoInspectInput.files?.length||!data.hdr_metadata_complete}
 });
 </script>
 </body>
