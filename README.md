@@ -30,8 +30,14 @@ docker compose down
 - Upload MP4, MOV, M4V, or MKV files up to 512 MiB to `POST /api/video/inspect`.
 - FFprobe reports codec, dimensions, pixel format, estimated bit depth, frame rate, duration, color primaries, matrix, transfer function, range, and available Dolby Vision side-data/profile information.
 - HLG (`arib-std-b67`) and PQ/HDR10 (`smpte2084`) are classified separately. The API reports whether BT.2020 primaries/matrix and at least 10-bit depth are confirmed, plus whether the source is at least 3840×2160 at approximately 30 fps. Inspection never upscales or changes frame rate.
-- `POST /api/video/preserve-hdr` remuxes confirmed HLG/PQ + BT.2020 + 10-bit sources into MP4 with stream copy (no video re-encode), then re-probes the result and rejects it if HDR transfer, primaries, matrix, or bit depth changed. This preserves original image data; it does not apply a LUT or improve image quality.
+- `POST /api/video/preserve-hdr` remuxes confirmed HLG/PQ + BT.2020 + 10-bit sources into MP4 with stream copy (no video re-encode), then re-probes the result and rejects it if HDR transfer, primaries, matrix, bit depth, or available HDR mastering/content-light/Dolby Vision side data changed. This preserves original image data; it does not apply a LUT or improve image quality.
 - The existing `POST /api/video/process` workflow accepts confirmed HLG/BT.2020/10-bit footage and a `.cube` LUT, with adjustable intensity. It tone-maps HLG to SDR BT.709, applies the LUT, and exports an MP4 using HEVC Main 10 (`yuv420p10le`); audio is transcoded to AAC when present. This is an SDR deliverable, not an HLG/HDR master. HDR10/PQ and Dolby Vision are currently inspection-only; the new detection fields do not imply that PhotoLUT can author or preserve Dolby Vision metadata. Processing is limited to one video at a time, 512 MiB input, 10 MiB LUT, and a 20-minute FFmpeg timeout. Do not interpret a missing color tag as proof that footage is SDR.
+
+## TikTok delivery considerations
+
+TikTok's current [Content Posting API media guide](https://developers.tiktok.com/doc/content-posting-api-media-transfer-guide) lists MP4/MOV/WebM containers, H.264 (recommended) and H.265 codecs, 23–60 fps, dimensions up to 4096 pixels per side, and a 4 GB upload limit. Its published upload specification does not define an HDR transfer function, color primaries/matrix, bit-depth requirement, or Dolby Vision profile. Therefore, PhotoLUT cannot promise that TikTok will retain HDR or Dolby Vision metadata or deliver HDR playback after its server-side processing.
+
+For dependable TikTok color, keep the original HLG/PQ HDR master and make a separate SDR BT.709 upload copy. The current HLG LUT export creates an SDR BT.709 HEVC Main 10 MP4; H.265 is listed as supported by TikTok, but this does not guarantee a particular playback bitrate or quality after TikTok re-encodes it. The actual result still needs an upload-and-playback check on the target account and devices. Do not treat a 4K source or a larger bitrate as a guarantee of 4K HDR playback.
 
 ## Verification coverage
 
