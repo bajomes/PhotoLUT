@@ -68,6 +68,7 @@ def normalize_probe_data(payload: dict[str, Any]) -> dict[str, Any]:
         and matrix in {"bt2020nc", "bt2020_ncl"}
         and depth is not None and depth >= 10
     )
+    hlg_metadata_complete = is_hlg and hdr_metadata_complete
     side_data = stream.get("side_data_list") or []
     dolby_vision = next((item for item in side_data
                          if "dovi" in str(item.get("side_data_type", "")).lower()
