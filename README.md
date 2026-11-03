@@ -14,7 +14,7 @@ docker compose up --build -d
 
 Open http://127.0.0.1:8000 in a browser. The Compose port is bound to localhost by default. Job uploads and results stay in the container's temporary `/tmp/photolut-jobs` directory and are cleaned automatically after 30 minutes; Compose no longer creates a persistent `./jobs` mount on the host.
 
-In the Video panel, choose an HLG source and inspect its metadata. The built-in Natural HLG LUT is applied by default; an optional custom HLG-domain `.cube` LUT can replace it. The video LUT export accepts confirmed HLG/BT.2020/10-bit sources only and verifies the encoded HDR result before returning it. To stop the app:
+In the Video panel, choose an HLG source and inspect its metadata. The built-in Natural HLG LUT is applied by default; an optional custom HLG-domain `.cube` LUT can replace it. The video LUT export accepts confirmed HLG/BT.2020/10-bit sources only and verifies the encoded HDR result before returning it. After export, a synchronized before/after comparison lets you wipe between the original clip and the graded HDR result while previewing playback. Custom Rec.709 LUTs are not directly compatible with the current HLG-domain grading path. To stop the app:
 
 ```bash
 docker compose down
