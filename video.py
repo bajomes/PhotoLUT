@@ -252,7 +252,7 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         "-tag:v", "hvc1", "-color_range", "tv",
         "-color_primaries", "bt2020", "-color_trc", "arib-std-b67",
         "-colorspace", "bt2020nc",
-        "-x265-params", "hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
+        "-x265-params", "repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
     ]
     try:
