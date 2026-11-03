@@ -282,7 +282,7 @@ def _gpu_ffmpeg_filter(lut_path: Path) -> str:
         f"libplacebo=lut='{lut}':lut_type=native:format=yuv420p10le:"
         "colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67:"
         "range=tv:peak_detect=false,"
-        "hwdownload,format=p010le[outv]"
+        "hwdownload,format=yuv420p10le,format=p010le[outv]"
     )
 
 
