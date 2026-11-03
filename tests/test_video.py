@@ -167,8 +167,15 @@ def test_transcode_invokes_ffmpeg_as_ten_bit_bt709(tmp_path: Path):
     def fake_run(command, **kwargs):
         Path(command[-1]).write_bytes(b"mp4")
         return subprocess.CompletedProcess(command, 0, "", "")
+    source_metadata = {"hlg_metadata_complete": True}
+    output_metadata = {
+        "codec": "hevc", "codec_profile": "Main 10",
+        "pixel_format": "yuv420p10le", "bit_depth": 10,
+        "color_transfer": "bt709", "color_primaries": "bt709",
+        "color_matrix": "bt709",
+    }
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-        "video.inspect_video", return_value={"hlg_metadata_complete": True}
+        "video.inspect_video", side_effect=[source_metadata, output_metadata]
     ), patch("video.core.parse_cube"), patch("video.subprocess.run", side_effect=fake_run) as run:
         video.transcode_hlg_video(source, lut, output, 0.5)
     command = run.call_args.args[0]
@@ -216,3 +223,30 @@ def test_preserve_hdr_rejects_changed_mastering_metadata(tmp_path: Path):
     ), patch("video.subprocess.run", side_effect=fake_run):
         with pytest.raises(RuntimeError, match="hdr_side_data"):
             video.preserve_hdr_video(source, output)
+
+
+
+def test_transcode_rejects_unexpected_h264_output(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8)
+
+    source_metadata = {"hlg_metadata_complete": True}
+    bad_output_metadata = {
+        "codec": "h264", "codec_profile": "High 10",
+        "pixel_format": "yuv420p10le", "bit_depth": 10,
+        "color_transfer": "bt709", "color_primaries": "bt709",
+        "color_matrix": "bt709",
+    }
+
+    def fake_run(command, **kwargs):
+        Path(command[-1]).write_bytes(b"mp4")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", side_effect=[source_metadata, bad_output_metadata]
+    ), patch("video.core.parse_cube"), patch("video.subprocess.run", side_effect=fake_run):
+        with pytest.raises(RuntimeError, match="codec: expected 'hevc', got 'h264'"):
+            video.transcode_hlg_video(source, lut, output, 1.0)
+
+    assert not output.exists()
