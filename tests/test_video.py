@@ -258,7 +258,7 @@ def test_transcode_removes_output_when_reprobe_fails(tmp_path: Path):
     assert not output.exists()
 
 
-def test_builtin_natural_hlg_lut_is_valid_and_bounded():
+def test_builtin_neutral_hlg_lut_is_valid_and_bounded():
     lut = Path(__file__).resolve().parents[1] / "static" / "luts" / "photolut-neutral-hlg-bt2020.cube"
     parsed = video.core.parse_cube(lut)
     assert parsed.size == 17
