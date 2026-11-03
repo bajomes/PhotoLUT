@@ -4,17 +4,18 @@ PhotoLUT applies a 3D `.cube` creative LUT to RAW photographs and exports ready-
 
 ## Quick start
 
-Install Docker Desktop or Docker Engine with the Compose plugin. Check out the HDR-only video LUT branch, then build and start PhotoLUT:
+Install Docker Desktop or Docker Engine with the Compose plugin. Check out the current project branch, then build and start PhotoLUT:
 
 ```bash
-git fetch origin feat/hdr-only-video-lut
-git switch --track origin/feat/hdr-only-video-lut
+git fetch origin
+git switch main
+ git pull --ff-only
 docker compose up --build -d
 ```
 
 Open http://127.0.0.1:8000 in a browser. The Compose port is bound to localhost by default. Job uploads and results stay in the container's temporary `/tmp/photolut-jobs` directory and are cleaned automatically after 30 minutes; Compose no longer creates a persistent `./jobs` mount on the host.
 
-In the Video panel, choose an HLG source and inspect its metadata. The built-in Natural HLG LUT is applied by default; an optional custom HLG-domain `.cube` LUT can replace it. The video LUT export accepts confirmed HLG/BT.2020/10-bit sources only and verifies the encoded HDR result before returning it. After export, a synchronized before/after comparison lets you wipe between the original clip and the graded HDR result while previewing playback. Custom Rec.709 LUTs are not directly compatible with the current HLG-domain grading path. To stop the app:
+In the Video panel, choose an HLG source and inspect its metadata. The built-in Natural HLG LUT is applied by default; an optional custom HLG-domain `.cube` LUT can replace it. The video LUT export accepts confirmed HLG/BT.2020/10-bit sources only and verifies the encoded HDR result before returning it. After export, a synchronized before/after comparison lets you wipe between the original clip and the graded HDR result while previewing playback. The wipe is controlled directly inside the preview; playback can be started or paused and jumped to a time in seconds. Custom Rec.709 LUTs are not directly compatible with the current HLG-domain grading path. To stop the app:
 
 ```bash
 docker compose down
@@ -34,8 +35,8 @@ docker compose down
 - Upload MP4, MOV, M4V, or MKV files up to 512 MiB to `POST /api/video/inspect`.
 - FFprobe reports codec, dimensions, pixel format, estimated bit depth, frame rate, duration, color primaries, matrix, transfer function, range, and available Dolby Vision side-data/profile information.
 - HLG (`arib-std-b67`) and PQ/HDR10 (`smpte2084`) are classified separately. The API reports whether BT.2020 primaries/matrix and at least 10-bit depth are confirmed, plus whether the source is at least 3840×2160 at approximately 30 fps. Inspection never upscales or changes frame rate.
-- `POST /api/video/preserve-hdr` remuxes confirmed HLG/PQ + BT.2020 + 10-bit sources into MP4 with stream copy (no video re-encode), then re-probes the result and rejects it if HDR transfer, primaries, matrix, bit depth, or available HDR mastering/content-light/Dolby Vision side data changed. This preserves original image data; it does not apply a LUT or improve image quality.
-- The `POST /api/video/process` workflow accepts confirmed HLG/BT.2020/10-bit footage and an HLG-domain `.cube` LUT, with adjustable intensity. The filter converts the BT.2020 YUV signal to HLG-encoded BT.2020 RGB, applies the LUT without tone mapping or conversion to BT.709, then converts back to limited-range BT.2020 HLG YUV. Output is encoded as HEVC Main 10 (`yuv420p10le`) with HLG/BT.2020 VUI tags and is re-probed before delivery; the API rejects any result that does not verify as 10-bit HLG/BT.2020. Dolby Vision sources are rejected because re-encoding would discard dynamic metadata. HDR10/PQ is inspected and can be preserved by stream-copy, but LUT grading in this release is HLG-only. The included Natural HLG LUT is an original PhotoLUT look authored for HLG-encoded BT.2020 RGB; it is not an SDR LUT and must not be used on Rec.709 or camera-Log footage. Processing is limited to one video at a time, 512 MiB input, 10 MiB LUT, and a 20-minute FFmpeg timeout. Do not interpret a missing color tag as proof that footage is SDR.
+- Video processing currently uses FFmpeg CPU filters (`zscale`, `lut3d`, and `blend`) and the `libx265` CPU encoder. GPU acceleration is not enabled in this Docker build; adding it requires a compatible GPU, host driver/runtime passthrough, and an FFmpeg build with the matching hardware/filter support. CPU usage therefore cannot be expected to reach 0%.
+- The `POST /api/video/process` workflow accepts confirmed HLG/BT.2020/10-bit footage and an HLG-domain `.cube` LUT, with adjustable intensity. The filter converts the BT.2020 YUV signal to HLG-encoded BT.2020 RGB, applies the LUT without tone mapping or conversion to BT.709, then converts back to limited-range BT.2020 HLG YUV. Output is encoded as HEVC Main 10 (`yuv420p10le`) with HLG/BT.2020 VUI tags and is re-probed before delivery; the API rejects any result that does not verify as 10-bit HLG/BT.2020. Dolby Vision sources are rejected because re-encoding would discard dynamic metadata. HDR10/PQ is inspected, but LUT grading in this release is HLG-only. The included Natural HLG LUT is an original PhotoLUT look authored for HLG-encoded BT.2020 RGB; it is not an SDR LUT and must not be used on Rec.709 or camera-Log footage. Processing is limited to one video at a time, 512 MiB input, 10 MiB LUT, and a 20-minute FFmpeg timeout. Do not interpret a missing color tag as proof that footage is SDR.
 
 ## TikTok delivery considerations
 
