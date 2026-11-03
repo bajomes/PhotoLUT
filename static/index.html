@@ -186,7 +186,6 @@ button,input,select,textarea{letter-spacing:inherit}
         <p class="hint">The graded export remains HDR: HLG transfer, BT.2020 color, and 10-bit HEVC. Dolby Vision sources are not accepted for LUT re-encoding because their dynamic metadata cannot currently be preserved. HDR10/PQ inputs are inspected but LUT export is limited to HLG in this release.</p>
               <button class="primary" id="processVideoBtn" type="button" disabled>Apply LUT & export 10-bit video</button>
         <div class="progress-status" id="videoProcessStatus" role="status" aria-live="polite"></div>
->
       </div>
       <div id="videoInspectResult" class="video-inspect-result" hidden aria-live="polite"></div>
     </div>
@@ -211,7 +210,7 @@ button,input,select,textarea{letter-spacing:inherit}
             <button class="ghost fullscreen-control" id="videoFullscreen" type="button">Fullscreen</button>
           </div>
           <div class="video-preview-actions"><button class="primary" id="downloadProcessedVideo" type="button">Download processed MP4</button><span class="hint">Muted visual comparison; the exported file retains its audio.</span></div>
-        </div
+        </div>
   </section>
   <section id="result">
     <div class="results-head"><div><h2>Results</h2><p id="summary"></p></div><div class="result-actions"><button class="ghost new-batch" id="newBatchBtn">Start a new batch</button><button type="button" class="zip-btn" id="dlZip" aria-haspopup="dialog" aria-controls="downloadPicker">↓ &nbsp; Download all</button></div></div>
