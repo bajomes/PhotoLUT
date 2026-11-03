@@ -150,7 +150,7 @@ def test_preserve_hdr_stream_copies_and_verifies_metadata(tmp_path: Path):
 def test_transcode_rejects_unconfirmed_hlg_before_ffmpeg(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
-    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8)
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
     metadata = {"hlg_metadata_complete": False}
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", return_value=metadata
@@ -163,7 +163,7 @@ def test_transcode_rejects_unconfirmed_hlg_before_ffmpeg(tmp_path: Path):
 def test_transcode_invokes_ffmpeg_as_ten_bit_bt709(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
-    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8)
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
     def fake_run(command, **kwargs):
         Path(command[-1]).write_bytes(b"mp4")
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -229,7 +229,7 @@ def test_preserve_hdr_rejects_changed_mastering_metadata(tmp_path: Path):
 def test_transcode_rejects_unexpected_h264_output(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
-    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8)
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
 
     source_metadata = {"hlg_metadata_complete": True}
     bad_output_metadata = {
