@@ -352,7 +352,6 @@ videoInspectInput.addEventListener("change",()=>{
   $("videoInspectResult").hidden=true;
   $("videoInspectStatus").textContent=file?(file.size>512*1024*1024?"File exceeds the 512 MiB limit.":(file.size/1024/1024).toFixed(1)+" MiB selected"):"";
   $("videoProcessStatus").textContent="";
-  $("preserveHdrStatus").textContent="";
   clearProcessedVideoPreview();
   if(file&&file.size>512*1024*1024)$("inspectVideoBtn").disabled=true;
 });
