@@ -258,6 +258,29 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
     if not output.is_file() or output.stat().st_size == 0:
         raise RuntimeError("FFmpeg did not produce a valid output file.")
 
+    # Verify the encoded stream, not just the encoder arguments. This catches
+    # unexpected codec/pixel-format/color-tag changes before the file is served.
+    output_metadata = inspect_video(output)
+    expected = {
+        "codec": "hevc",
+        "codec_profile": "Main 10",
+        "pixel_format": "yuv420p10le",
+        "bit_depth": 10,
+        "color_transfer": "bt709",
+        "color_primaries": "bt709",
+        "color_matrix": "bt709",
+    }
+    mismatches = [
+        f"{key}: expected {value!r}, got {output_metadata.get(key)!r}"
+        for key, value in expected.items()
+        if output_metadata.get(key) != value
+    ]
+    if mismatches:
+        output.unlink(missing_ok=True)
+        raise RuntimeError(
+            "Export verification failed; output was rejected. " + "; ".join(mismatches)
+        )
+
 
 
 
