@@ -345,7 +345,7 @@ videoInspectInput.addEventListener("change",()=>{
   if(file&&file.size>512*1024*1024)$("inspectVideoBtn").disabled=true;
 });
 
-let processedVideoUrl=null,processedVideoName="photolut_sdr_10bit.mp4";
+let processedVideoUrl=null,processedVideoName="photolut_hdr_hlg_10bit.mp4";
 const processedVideoPreview=$("processedVideoPreview");
 function clearProcessedVideoPreview(){if(processedVideoUrl){URL.revokeObjectURL(processedVideoUrl);processedVideoUrl=null;}processedVideoPreview.removeAttribute("src");processedVideoPreview.load();$("videoPreviewPanel").hidden=true;}
 window.addEventListener("beforeunload",clearProcessedVideoPreview);
@@ -363,7 +363,7 @@ videoInspectInput.addEventListener("change",()=>{videoHdrConfirmed=false;videoHl
 videoLutIntensity.addEventListener("input",()=>{$("videoLutIntensityValue").textContent=videoLutIntensity.value+"%";});
 processVideoBtn.addEventListener("click",async()=>{
   const source=videoInspectInput.files?.[0];let lut=videoLutInput.files?.[0];if(!source)return;
-  if(!lut.name.toLowerCase().endsWith(".cube")){$("videoProcessStatus").textContent="Choose a valid .cube LUT.";return;}
+  if(lut&&!lut.name.toLowerCase().endsWith(".cube")){$("videoProcessStatus").textContent="Choose a valid .cube LUT.";return;}
   processVideoBtn.disabled=true;$("videoProcessStatus").textContent="Applying HDR HLG LUT and encoding 10-bit HEVC…";
   try{
     if(!lut){const preset=await fetch("/static/luts/photolut-natural-hlg-bt2020.cube");if(!preset.ok)throw new Error("The built-in HLG LUT could not be loaded.");lut=await preset.blob();}
