@@ -49,7 +49,7 @@ docker compose down
 
 TikTok's current [Content Posting API media guide](https://developers.tiktok.com/doc/content-posting-api-media-transfer-guide) lists MP4/MOV/WebM containers, H.264 (recommended) and H.265 codecs, 23–60 fps, dimensions up to 4096 pixels per side, and a 4 GB upload limit. Its published upload specification does not define an HDR transfer function, color primaries/matrix, bit-depth requirement, or Dolby Vision profile. Therefore, PhotoLUT cannot promise that TikTok will retain HDR or Dolby Vision metadata or deliver HDR playback after its server-side processing.
 
-For dependable TikTok color, keep the original HLG/PQ HDR master and make a separate SDR BT.709 upload copy. The current HLG LUT export creates an SDR BT.709 HEVC Main 10 MP4; H.265 is listed as supported by TikTok, but this does not guarantee a particular playback bitrate or quality after TikTok re-encodes it. The actual result still needs an upload-and-playback check on the target account and devices. Do not treat a 4K source or a larger bitrate as a guarantee of 4K HDR playback.
+PhotoLUT's HLG LUT export produces an HEVC Main 10 HLG/BT.2020 master. TikTok's published upload specification does not promise HDR preservation, so the app cannot guarantee that a posted video will remain HDR after platform processing. Keep the verified PhotoLUT HDR master as the archival source and confirm playback on the target account and devices after upload. Do not treat a 4K source or a larger bitrate as a guarantee of 4K HDR playback.
 
 ## Verification coverage
 
