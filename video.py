@@ -61,19 +61,55 @@ def normalize_probe_data(payload: dict[str, Any]) -> dict[str, Any]:
     matrix = str(stream.get("color_space") or "unknown").lower()
     depth = _bit_depth(stream)
     is_hlg = transfer == "arib-std-b67"
-    hlg_metadata_complete = (
-        is_hlg and primaries == "bt2020"
+    is_pq = transfer in {"smpte2084", "smpte-st-2084"}
+    is_hdr = is_hlg or is_pq
+    hdr_metadata_complete = (
+        is_hdr and primaries == "bt2020"
         and matrix in {"bt2020nc", "bt2020_ncl"}
         and depth is not None and depth >= 10
     )
+    hlg_metadata_complete = is_hlg and hdr_metadata_complete
+    side_data = stream.get("side_data_list") or []
+    dolby_vision = next((item for item in side_data
+                         if "dovi" in str(item.get("side_data_type", "")).lower()
+                         or "dolby vision" in str(item.get("side_data_type", "")).lower()), None)
+    dv_profile = (dolby_vision or {}).get("dv_profile")
+    hdr_side_data = []
+    for item in side_data:
+        side_type = str(item.get("side_data_type") or "").lower()
+        if any(token in side_type for token in ("mastering display", "content light", "dovi", "dolby vision")):
+            hdr_side_data.append({
+                key: item[key] for key in (
+                    "side_data_type", "red_x", "red_y", "green_x", "green_y",
+                    "blue_x", "blue_y", "white_point_x", "white_point_y",
+                    "min_luminance", "max_luminance", "max_content", "max_average",
+                    "dv_profile", "dv_level", "rpu_present", "el_present",
+                    "bl_present", "dv_bl_signal_compatibility_id",
+                ) if key in item
+            })
+    hdr_side_data.sort(key=lambda item: str(item.get("side_data_type", "")))
+    try:
+        fps_num, fps_den = str(stream.get("avg_frame_rate") or stream.get("r_frame_rate") or "0/1").split("/", 1)
+        fps = float(fps_num) / float(fps_den) if float(fps_den) else None
+    except (TypeError, ValueError, ZeroDivisionError):
+        fps = None
+    width, height = stream.get("width"), stream.get("height")
+    is_4k30 = bool(width and height and width >= 3840 and height >= 2160 and fps is not None and abs(fps - 30) <= 0.1)
+    hdr_format = ("Dolby Vision" if dolby_vision else
+                  "HDR10 / PQ" if is_pq else "HLG" if is_hlg else
+                  "SDR / BT.709" if transfer == "bt709" else "Unknown")
 
     warnings: list[str] = []
     if transfer == "unknown" or primaries == "unknown" or matrix == "unknown":
         warnings.append("Some color metadata is missing; confirm the source profile before grading.")
-    if is_hlg and not hlg_metadata_complete:
-        warnings.append("HLG transfer metadata was detected, but the BT.2020 matrix/primaries or 10-bit depth could not be confirmed.")
-    if not is_hlg:
-        warnings.append("The file is not tagged with the HLG transfer function; it will not be treated as HLG.")
+    if is_hdr and not hdr_metadata_complete:
+        warnings.append("An HDR transfer function was detected, but BT.2020 matrix/primaries or at least 10-bit depth could not be confirmed.")
+    if not is_hdr:
+        warnings.append("The file is not tagged as HLG or PQ HDR; it will not be treated as an HDR source.")
+    if dolby_vision and not is_pq:
+        warnings.append("Dolby Vision side data was found; verify the profile and base-layer compatibility before delivery.")
+    if not is_4k30:
+        warnings.append("The source is not confirmed as at least 3840×2160 at 30 fps; PhotoLUT will not force an upscale or frame-rate conversion during inspection.")
 
     fmt = payload.get("format") or {}
     return {
@@ -92,7 +128,17 @@ def normalize_probe_data(payload: dict[str, Any]) -> dict[str, Any]:
         "color_matrix": matrix,
         "color_range": stream.get("color_range") or "unknown",
         "is_hlg": is_hlg,
+        "is_pq": is_pq,
+        "is_hdr": is_hdr,
+        "hdr_format": hdr_format,
+        "hdr_metadata_complete": hdr_metadata_complete,
         "hlg_metadata_complete": hlg_metadata_complete,
+        "dolby_vision_detected": dolby_vision is not None,
+        "dolby_vision_profile": dv_profile,
+        "hdr_side_data": hdr_side_data,
+        "frame_rate_numeric": round(fps, 3) if fps is not None else None,
+        "is_4k30_or_higher": is_4k30,
+        "recommended_path": ("preserve_hdr" if hdr_metadata_complete else "inspect_color_metadata" if is_hdr else "sdr_input" if transfer == "bt709" else "manual_color_confirmation"),
         "warnings": warnings,
     }
 
@@ -107,7 +153,7 @@ def inspect_video(path: Path) -> dict[str, Any]:
         executable, "-v", "error", "-select_streams", "v:0",
         "-show_entries",
         "stream=codec_type,codec_name,profile,width,height,pix_fmt,bits_per_raw_sample,"
-        "avg_frame_rate,r_frame_rate,color_range,color_space,color_transfer,color_primaries:"
+        "avg_frame_rate,r_frame_rate,color_range,color_space,color_transfer,color_primaries,side_data_list:"
         "format=duration,format_name",
         "-of", "json", str(path),
     ]
@@ -190,6 +236,11 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         raise ValueError(
             "This first video-processing workflow requires confirmed HLG, BT.2020, and at least 10-bit input."
         )
+    if metadata.get("dolby_vision_detected"):
+        raise ValueError(
+            "LUT export is disabled for Dolby Vision sources because re-encoding would discard Dolby Vision dynamic metadata. "
+            "Use HDR preservation to keep the original stream unchanged."
+        )
     # Parse once before invoking FFmpeg so malformed LUTs fail with a clear API error.
     core.parse_cube(lut_path)
     command = [
@@ -202,16 +253,128 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
     ]
     try:
-        subprocess.run(command, check=True, capture_output=True, text=True,
-                       timeout=VIDEO_PROCESS_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("Video processing exceeded the 20-minute time limit.") from exc
-    except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or "").strip()
-        raise ValueError(detail[-1000:] or "FFmpeg could not process this video.") from exc
-    if not output.is_file() or output.stat().st_size == 0:
-        raise RuntimeError("FFmpeg did not produce a valid output file.")
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True,
+                           timeout=VIDEO_PROCESS_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Video processing exceeded the 20-minute time limit.") from exc
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or "").strip()
+            raise ValueError(detail[-1000:] or "FFmpeg could not process this video.") from exc
+        if not output.is_file() or output.stat().st_size == 0:
+            raise RuntimeError("FFmpeg did not produce a valid output file.")
 
+        # Verify the encoded stream, not just the encoder arguments.
+        output_metadata = inspect_video(output)
+        expected = {
+            "codec": "hevc",
+            "codec_profile": "Main 10",
+            "pixel_format": "yuv420p10le",
+            "bit_depth": 10,
+            "color_transfer": "bt709",
+            "color_primaries": "bt709",
+            "color_matrix": "bt709",
+        }
+        mismatches = [
+            f"{key}: expected {value!r}, got {output_metadata.get(key)!r}"
+            for key, value in expected.items()
+            if output_metadata.get(key) != value
+        ]
+        if mismatches:
+            raise RuntimeError(
+                "Export verification failed; output was rejected. " + "; ".join(mismatches)
+            )
+    except BaseException:
+        # Do not leave partial, unverified, or failed exports in the temp directory.
+        output.unlink(missing_ok=True)
+        raise
+
+
+
+
+def preserve_hdr_video(source: Path, output: Path) -> dict[str, Any]:
+    """Remux confirmed HDR video without re-encoding, preserving original HDR pixels."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("FFmpeg is not installed.")
+    source_metadata = inspect_video(source)
+    if not source_metadata.get("hdr_metadata_complete"):
+        raise ValueError("HDR preservation requires confirmed HLG or PQ, BT.2020, and at least 10-bit input.")
+    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
+               "-map", "0:v:0", "-map", "0:a?", "-map_metadata", "0", "-c", "copy",
+               "-movflags", "+faststart"]
+    if source_metadata.get("codec") == "hevc":
+        command += ["-tag:v", "hvc1"]
+    command.append(str(output))
+    try:
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True,
+                           timeout=VIDEO_PROCESS_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("HDR remux exceeded the 20-minute time limit.") from exc
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or "").strip()
+            raise ValueError(detail[-1000:] or "FFmpeg could not preserve this HDR video in MP4.") from exc
+        if not output.is_file() or output.stat().st_size == 0:
+            raise RuntimeError("FFmpeg did not produce a valid HDR MP4.")
+
+        output_metadata = inspect_video(output)
+        if not output_metadata.get("hdr_metadata_complete"):
+            raise RuntimeError("HDR metadata verification failed after MP4 remux; the output was rejected.")
+        for key in ("color_transfer", "color_primaries", "color_matrix", "bit_depth", "hdr_side_data"):
+            if output_metadata.get(key) != source_metadata.get(key):
+                raise RuntimeError(f"HDR verification mismatch for {key}; the output was rejected.")
+        return output_metadata
+    except BaseException:
+        # A failed FFmpeg run or failed verification must never leave a deliverable-looking file.
+        output.unlink(missing_ok=True)
+        raise
+
+
+@router.post("/preserve-hdr")
+async def preserve_uploaded_hdr_video(video_file: UploadFile = File(...)) -> FileResponse:
+    """Create an MP4 container copy of a confirmed HDR source without altering video frames."""
+    filename = Path((video_file.filename or "video").replace(chr(92), "/")).name
+    extension = Path(filename).suffix.lower()
+    if extension not in SUPPORTED_VIDEO_EXTENSIONS:
+        raise HTTPException(400, "Supported video formats: MP4, MOV, M4V, and MKV.")
+    if not VIDEO_PROCESSING_SLOT.acquire(blocking=False):
+        raise HTTPException(429, "The video processor is busy. Please retry when the current export finishes.")
+    try:
+        temp_dir = Path(tempfile.mkdtemp(prefix="photolut-hdr-preserve-"))
+    except Exception:
+        VIDEO_PROCESSING_SLOT.release()
+        raise
+    source = temp_dir / f"input{extension}"
+    output = temp_dir / "photolut_hdr_preserved.mp4"
+    try:
+        size = 0
+        with source.open("wb") as stream:
+            while chunk := await video_file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_VIDEO_BYTES:
+                    raise HTTPException(413, "Video exceeds the 512 MiB processing limit.")
+                stream.write(chunk)
+        if size == 0:
+            raise HTTPException(400, "The uploaded video is empty.")
+        try:
+            metadata = await asyncio.to_thread(preserve_hdr_video, source, output)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        from starlette.background import BackgroundTask
+        return FileResponse(output, media_type="video/mp4",
+                            filename=f"{Path(filename).stem}_photolut_hdr_preserved.mp4",
+                            background=BackgroundTask(shutil.rmtree, temp_dir, ignore_errors=True),
+                            headers={"X-PhotoLUT-HDR-Verified": "true",
+                                     "X-PhotoLUT-HDR-Transfer": str(metadata["color_transfer"])})
+    except BaseException:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
+    finally:
+        VIDEO_PROCESSING_SLOT.release()
+        await video_file.close()
 
 @router.post("/process")
 async def process_uploaded_video(
@@ -276,6 +439,6 @@ async def process_uploaded_video(
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise
     finally:
+        VIDEO_PROCESSING_SLOT.release()
         await video_file.close()
         await cube.close()
-        VIDEO_PROCESSING_SLOT.release()

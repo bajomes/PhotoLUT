@@ -12,6 +12,18 @@ docker compose up --build -d
 
 Open http://127.0.0.1:8000 in a browser. The Compose port is bound to localhost by default. Job uploads and results stay in the container's temporary `/tmp/photolut-jobs` directory and are cleaned automatically after 30 minutes; Compose no longer creates a persistent `./jobs` mount on the host. To stop the app:
 
+### Run the HDR feature branch locally
+
+The HDR inspection/export UI is currently developed on `feat/pixel7-video-hdr-4k30`; it is not present on `main` until PR #30 is merged. To avoid testing an old container, check out the feature branch and use the verified startup script:
+
+```bash
+git fetch origin feat/pixel7-video-hdr-4k30
+git switch --track origin/feat/pixel7-video-hdr-4k30
+bash scripts/run-local-hdr.sh
+```
+
+The script refuses to run on another branch or with uncommitted changes, fast-forwards the feature branch, rebuilds and recreates the Compose service, waits for the API, and checks that both the HDR UI panel and `/api/video/preserve-hdr` endpoint are actually being served. It prints the exact commit being tested. Run it again after new commits to update the local app.
+
 ```bash
 docker compose down
 ```
@@ -28,9 +40,16 @@ docker compose down
 ## Video inspection (early foundation)
 
 - Upload MP4, MOV, M4V, or MKV files up to 512 MiB to `POST /api/video/inspect`.
-- FFprobe reports codec, dimensions, pixel format, estimated bit depth, frame rate, duration, color primaries, matrix, transfer function, and range.
-- HLG is identified from the `arib-std-b67` transfer tag. The API separately reports whether BT.2020 primaries/matrix and at least 10-bit depth are also confirmed.
-- The separate `POST /api/video/process` workflow accepts confirmed HLG/BT.2020/10-bit footage and a `.cube` LUT, with adjustable intensity. It tone-maps HLG to SDR BT.709, applies the LUT, and exports an MP4 using HEVC Main 10 (`yuv420p10le`); audio is transcoded to AAC when present. This is an SDR deliverable, not an HLG/HDR master. Processing is limited to one video at a time, 512 MiB input, 10 MiB LUT, and a 20-minute FFmpeg timeout. Do not interpret a missing color tag as proof that footage is SDR.
+- FFprobe reports codec, dimensions, pixel format, estimated bit depth, frame rate, duration, color primaries, matrix, transfer function, range, and available Dolby Vision side-data/profile information.
+- HLG (`arib-std-b67`) and PQ/HDR10 (`smpte2084`) are classified separately. The API reports whether BT.2020 primaries/matrix and at least 10-bit depth are confirmed, plus whether the source is at least 3840×2160 at approximately 30 fps. Inspection never upscales or changes frame rate.
+- `POST /api/video/preserve-hdr` remuxes confirmed HLG/PQ + BT.2020 + 10-bit sources into MP4 with stream copy (no video re-encode), then re-probes the result and rejects it if HDR transfer, primaries, matrix, bit depth, or available HDR mastering/content-light/Dolby Vision side data changed. This preserves original image data; it does not apply a LUT or improve image quality.
+- The existing `POST /api/video/process` workflow accepts confirmed HLG/BT.2020/10-bit footage and a `.cube` LUT, with adjustable intensity. It explicitly rejects Dolby Vision sources before FFmpeg because re-encoding the base layer would discard dynamic Dolby Vision metadata; use the no-re-encode HDR preservation endpoint instead. It tone-maps HLG to SDR BT.709, applies the LUT, and exports an MP4 using HEVC Main 10 (`yuv420p10le`); audio is transcoded to AAC when present. This is an SDR deliverable, not an HLG/HDR master. The API now re-probes the completed file and rejects it before delivery unless the actual encoded stream is HEVC Main 10, 10-bit `yuv420p10le`, and BT.709. This guards against a codec or metadata mismatch but does not turn the SDR workflow into HDR. HDR10/PQ and Dolby Vision are currently inspection-only; the new detection fields do not imply that PhotoLUT can author or preserve Dolby Vision metadata. Processing is limited to one video at a time, 512 MiB input, 10 MiB LUT, and a 20-minute FFmpeg timeout. Do not interpret a missing color tag as proof that footage is SDR.
+
+## TikTok delivery considerations
+
+TikTok's current [Content Posting API media guide](https://developers.tiktok.com/doc/content-posting-api-media-transfer-guide) lists MP4/MOV/WebM containers, H.264 (recommended) and H.265 codecs, 23–60 fps, dimensions up to 4096 pixels per side, and a 4 GB upload limit. Its published upload specification does not define an HDR transfer function, color primaries/matrix, bit-depth requirement, or Dolby Vision profile. Therefore, PhotoLUT cannot promise that TikTok will retain HDR or Dolby Vision metadata or deliver HDR playback after its server-side processing.
+
+For dependable TikTok color, keep the original HLG/PQ HDR master and make a separate SDR BT.709 upload copy. The current HLG LUT export creates an SDR BT.709 HEVC Main 10 MP4; H.265 is listed as supported by TikTok, but this does not guarantee a particular playback bitrate or quality after TikTok re-encodes it. The actual result still needs an upload-and-playback check on the target account and devices. Do not treat a 4K source or a larger bitrate as a guarantee of 4K HDR playback.
 
 ## Verification coverage
 

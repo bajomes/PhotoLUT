@@ -131,11 +131,11 @@ button,input,select,textarea{letter-spacing:inherit}
     </aside>
   </section>
   <section class="panel video-inspect-panel" aria-labelledby="videoInspectTitle">
-    <div class="panel-head"><span class="panel-title" id="videoInspectTitle">VIDEO · HLG INSPECTION</span><span class="step">Early access</span></div>
+    <div class="panel-head"><span class="panel-title" id="videoInspectTitle">VIDEO · HDR INSPECTION & EXPORT</span><span class="step">Early access</span></div>
     <div class="panel-body video-inspect-body">
       <div>
         <b class="video-inspect-heading">Inspect a Pixel or other HDR video</b>
-        <p class="hint">Inspect HLG metadata, apply a .cube LUT, then preview the SDR BT.709 10-bit result before choosing whether to download it.</p>
+        <p class="hint">Inspect HLG, HDR10/PQ, Dolby Vision side data, resolution, frame rate, and bit depth. Confirmed HLG/PQ sources can be remuxed to MP4 without re-encoding. The separate LUT export converts supported HLG footage to SDR BT.709.</p>
         <label class="drop video-inspect-drop" for="videoInspectInput" id="videoInspectDrop">
           <span class="drop-icon">▶</span><b id="videoInspectName">Choose an original video</b><span>MP4 · MOV · M4V · MKV</span><span class="browse">Browse video</span>
         </label>
@@ -146,7 +146,9 @@ button,input,select,textarea{letter-spacing:inherit}
         <input type="file" id="videoLutInput" accept=".cube">
         <div class="range-head"><label for="videoLutIntensity">Video LUT intensity</label><strong id="videoLutIntensityValue">100%</strong></div>
         <input type="range" id="videoLutIntensity" min="0" max="100" value="100">
-        <p class="hint">Export: MP4 · HEVC Main 10 · SDR BT.709. HLG is tone-mapped to SDR before the LUT is applied; 10-bit output is retained.</p>
+        <p class="hint">HDR preservation copies confirmed HLG/PQ video frames and available HDR metadata unchanged. It does not apply a LUT or enhance image quality. Separate LUT export below remains SDR BT.709. Dolby Vision LUT re-encoding is disabled because the dynamic metadata cannot be preserved; use the original HDR preservation option.</p>
+        <button class="primary" id="preserveHdrBtn" type="button" disabled>Preserve original HDR · MP4</button>
+        <div class="progress-status" id="preserveHdrStatus" role="status" aria-live="polite"></div>
         <button class="primary" id="processVideoBtn" type="button" disabled>Apply LUT & export 10-bit video</button>
         <div class="progress-status" id="videoProcessStatus" role="status" aria-live="polite"></div>
         <div class="video-preview-panel" id="videoPreviewPanel" hidden><video id="processedVideoPreview" controls playsinline preload="metadata"></video><div class="video-preview-actions"><button class="primary" id="downloadProcessedVideo" type="button">Download processed MP4</button><span class="hint">Preview only — no automatic download.</span></div></div>
@@ -336,6 +338,9 @@ videoInspectInput.addEventListener("change",()=>{
   $("inspectVideoBtn").disabled=!file;
   $("videoInspectResult").hidden=true;
   $("videoInspectStatus").textContent=file?(file.size>512*1024*1024?"File exceeds the 512 MiB limit.":(file.size/1024/1024).toFixed(1)+" MiB selected"):"";
+  $("videoProcessStatus").textContent="";
+  $("preserveHdrStatus").textContent="";
+  clearProcessedVideoPreview();
   if(file&&file.size>512*1024*1024)$("inspectVideoBtn").disabled=true;
 });
 
@@ -344,11 +349,16 @@ const processedVideoPreview=$("processedVideoPreview");
 function clearProcessedVideoPreview(){if(processedVideoUrl){URL.revokeObjectURL(processedVideoUrl);processedVideoUrl=null;}processedVideoPreview.removeAttribute("src");processedVideoPreview.load();$("videoPreviewPanel").hidden=true;}
 window.addEventListener("beforeunload",clearProcessedVideoPreview);
 $("downloadProcessedVideo").addEventListener("click",()=>{if(!processedVideoUrl)return;const link=document.createElement("a");link.href=processedVideoUrl;link.download=processedVideoName;document.body.appendChild(link);link.click();link.remove();});
+let videoHdrConfirmed=false,videoHlgConfirmed=false,videoDolbyVisionDetected=false;
 const videoLutInput=$("videoLutInput");
 const videoLutIntensity=$("videoLutIntensity");
 const processVideoBtn=$("processVideoBtn");
-videoLutInput.addEventListener("change",()=>{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length);});
-videoInspectInput.addEventListener("change",()=>{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length);});
+videoLutInput.addEventListener("change",()=>{
+  processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length&&videoHlgConfirmed&&!videoDolbyVisionDetected);
+  $("videoProcessStatus").textContent="";
+  clearProcessedVideoPreview();
+});
+videoInspectInput.addEventListener("change",()=>{videoHdrConfirmed=false;videoHlgConfirmed=false;videoDolbyVisionDetected=false;preserveHdrBtn.disabled=true;processVideoBtn.disabled=true;});
 videoLutIntensity.addEventListener("input",()=>{$("videoLutIntensityValue").textContent=videoLutIntensity.value+"%";});
 processVideoBtn.addEventListener("click",async()=>{
   const source=videoInspectInput.files?.[0],lut=videoLutInput.files?.[0];if(!source||!lut)return;
@@ -366,7 +376,23 @@ processVideoBtn.addEventListener("click",async()=>{
     $("videoPreviewPanel").hidden=false;
     $("videoProcessStatus").textContent="Export complete. Preview the SDR BT.709 HEVC 10-bit MP4 below; download only when ready.";
   }catch(error){$("videoProcessStatus").textContent=error.message||String(error);}
-  finally{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length);}
+  finally{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length&&videoHlgConfirmed&&!videoDolbyVisionDetected);}
+});
+
+
+const preserveHdrBtn=$("preserveHdrBtn");
+preserveHdrBtn.addEventListener("click",async()=>{
+  const source=videoInspectInput.files?.[0];if(!source)return;
+  preserveHdrBtn.disabled=true;$("preserveHdrStatus").textContent="Verifying HDR metadata and preparing a no-re-encode MP4…";
+  try{
+    const form=new FormData();form.append("video_file",source);
+    const response=await fetch("/api/video/preserve-hdr",{method:"POST",body:form});
+    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.detail||"HDR preservation failed ("+response.status+")");}
+    const blob=await response.blob();const url=URL.createObjectURL(blob);const link=document.createElement("a");
+    link.href=url;link.download=source.name.replace(/\.[^.]+$/,"")+"_photolut_hdr_preserved.mp4";document.body.appendChild(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);$("preserveHdrStatus").textContent="Verified HDR MP4 downloaded. Video frames were stream-copied without re-encoding.";
+  }catch(error){$("preserveHdrStatus").textContent=error.message||String(error);}
+  finally{preserveHdrBtn.disabled=!videoInspectInput.files?.length||!videoHdrConfirmed;}
 });
 
 $("inspectVideoBtn").addEventListener("click",async()=>{
@@ -377,18 +403,19 @@ $("inspectVideoBtn").addEventListener("click",async()=>{
     const response=await fetch("/api/video/inspect",{method:"POST",body:form});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.detail||"Video inspection failed ("+response.status+")");
+    videoHdrConfirmed=Boolean(data.hdr_metadata_complete);videoHlgConfirmed=Boolean(data.hlg_metadata_complete);videoDolbyVisionDetected=Boolean(data.dolby_vision_detected);preserveHdrBtn.disabled=!videoHdrConfirmed;processVideoBtn.disabled=!(videoHlgConfirmed&&!videoDolbyVisionDetected&&videoLutInput.files?.length);
     const result=$("videoInspectResult");result.replaceChildren();
     const heading=document.createElement("h3");heading.textContent="Inspection result";result.append(heading);
-    const status=document.createElement("div");status.className="video-hlg-status "+(data.hlg_metadata_complete?"good":"warn");
-    status.textContent=data.hlg_metadata_complete?"HLG detected · BT.2020 · at least 10-bit confirmed":data.is_hlg?"HLG transfer detected, but some HDR metadata is incomplete":"HLG not confirmed from the file metadata";result.append(status);
+    const status=document.createElement("div");status.className="video-hlg-status "+(data.hdr_metadata_complete?"good":"warn");
+    status.textContent=data.hdr_metadata_complete?(data.hdr_format+" detected · BT.2020 · at least 10-bit confirmed"):data.is_hdr?"HDR transfer detected, but some HDR metadata is incomplete":"HDR not confirmed from the file metadata";result.append(status);
     const grid=document.createElement("div");grid.className="video-meta-grid";
-    const fields=[["Codec",data.codec],["Profile",data.codec_profile],["Resolution",data.width&&data.height?data.width+" × "+data.height:null],["Pixel format",data.pixel_format],["Bit depth",data.bit_depth?data.bit_depth+"-bit":null],["Frame rate",data.frame_rate],["Duration",data.duration_seconds==null?null:data.duration_seconds+" s"],["Transfer",data.color_transfer],["Primaries",data.color_primaries],["Matrix",data.color_matrix],["Range",data.color_range],["Container",data.container]];
+    const fields=[["Codec",data.codec],["HDR format",data.hdr_format],["Dolby Vision",data.dolby_vision_detected?(data.dolby_vision_profile?"Detected · profile "+data.dolby_vision_profile:"Detected · profile unknown"):"Not detected"],["Pixel 7 target",data.is_4k30_or_higher?"4K · 30 fps":"Not confirmed as 4K · 30 fps"],["Profile",data.codec_profile],["Resolution",data.width&&data.height?data.width+" × "+data.height:null],["Pixel format",data.pixel_format],["Bit depth",data.bit_depth?data.bit_depth+"-bit":null],["Frame rate",data.frame_rate],["Duration",data.duration_seconds==null?null:data.duration_seconds+" s"],["Transfer",data.color_transfer],["Primaries",data.color_primaries],["Matrix",data.color_matrix],["Range",data.color_range],["Container",data.container]];
     for(const [label,value] of fields){const cell=document.createElement("div");cell.className="video-meta-item";const small=document.createElement("small");small.textContent=label;const bold=document.createElement("b");bold.textContent=value==null?"Unknown":String(value);cell.append(small,bold);grid.append(cell)}
     result.append(grid);
     if(Array.isArray(data.warnings)&&data.warnings.length){const warning=document.createElement("p");warning.className="hint";warning.textContent=data.warnings.join(" ");result.append(warning)}
     $("videoInspectStatus").textContent="Inspection complete. No video frames were modified.";result.hidden=false;
   }catch(error){$("videoInspectStatus").textContent=error.message||String(error)}
-  finally{$("inspectVideoBtn").disabled=!videoInspectInput.files?.length||videoInspectInput.files[0].size>512*1024*1024}
+  finally{$("inspectVideoBtn").disabled=!videoInspectInput.files?.length||videoInspectInput.files[0].size>512*1024*1024;preserveHdrBtn.disabled=!videoInspectInput.files?.length||!videoHdrConfirmed}
 });
 </script>
 </body>
