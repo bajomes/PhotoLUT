@@ -301,7 +301,13 @@ async def preserve_uploaded_hdr_video(video_file: UploadFile = File(...)) -> Fil
     extension = Path(filename).suffix.lower()
     if extension not in SUPPORTED_VIDEO_EXTENSIONS:
         raise HTTPException(400, "Supported video formats: MP4, MOV, M4V, and MKV.")
-    temp_dir = Path(tempfile.mkdtemp(prefix="photolut-hdr-preserve-"))
+    if not VIDEO_PROCESSING_SLOT.acquire(blocking=False):
+        raise HTTPException(429, "The video processor is busy. Please retry when the current export finishes.")
+    try:
+        temp_dir = Path(tempfile.mkdtemp(prefix="photolut-hdr-preserve-"))
+    except Exception:
+        VIDEO_PROCESSING_SLOT.release()
+        raise
     source = temp_dir / f"input{extension}"
     output = temp_dir / "photolut_hdr_preserved.mp4"
     try:
@@ -331,6 +337,7 @@ async def preserve_uploaded_hdr_video(video_file: UploadFile = File(...)) -> Fil
         raise
     finally:
         await video_file.close()
+        VIDEO_PROCESSING_SLOT.release()
 
 @router.post("/process")
 async def process_uploaded_video(
