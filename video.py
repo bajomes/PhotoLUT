@@ -308,13 +308,18 @@ def preserve_hdr_video(source: Path, output: Path) -> dict[str, Any]:
         raise ValueError(detail[-1000:] or "FFmpeg could not preserve this HDR video in MP4.") from exc
     if not output.is_file() or output.stat().st_size == 0:
         raise RuntimeError("FFmpeg did not produce a valid HDR MP4.")
-    output_metadata = inspect_video(output)
-    if not output_metadata.get("hdr_metadata_complete"):
-        raise RuntimeError("HDR metadata verification failed after MP4 remux; the output was rejected.")
-    for key in ("color_transfer", "color_primaries", "color_matrix", "bit_depth", "hdr_side_data"):
-        if output_metadata.get(key) != source_metadata.get(key):
-            raise RuntimeError(f"HDR verification mismatch for {key}; the output was rejected.")
-    return output_metadata
+    try:
+        output_metadata = inspect_video(output)
+        if not output_metadata.get("hdr_metadata_complete"):
+            raise RuntimeError("HDR metadata verification failed after MP4 remux; the output was rejected.")
+        for key in ("color_transfer", "color_primaries", "color_matrix", "bit_depth", "hdr_side_data"):
+            if output_metadata.get(key) != source_metadata.get(key):
+                raise RuntimeError(f"HDR verification mismatch for {key}; the output was rejected.")
+        return output_metadata
+    except Exception:
+        # Never leave a failed or unverified remux available for accidental delivery.
+        output.unlink(missing_ok=True)
+        raise
 
 
 @router.post("/preserve-hdr")
