@@ -144,9 +144,9 @@ button,input,select,textarea{letter-spacing:inherit}
         <div class="progress-status" id="videoInspectStatus" role="status" aria-live="polite"></div>
         <div class="mini-label"><label for="videoLutInput">CUSTOM HLG .CUBE LUT (OPTIONAL)</label></div>
         <input type="file" id="videoLutInput" accept=".cube">
-        <p class="hint">Default look: <b>PhotoLUT Natural HLG BT.2020</b> — an included HLG-domain LUT. <a href="/luts/photolut-natural-hlg-bt2020.cube" download>Download the built-in LUT</a>. Custom uploads must also be authored for HLG/BT.2020; standard Rec.709 LUTs such as IWLTBAP Sedona are not directly compatible yet.</p>
-        <div class="range-head"><label for="videoLutIntensity">Video LUT intensity</label><strong id="videoLutIntensityValue">100%</strong></div>
-        <input type="range" id="videoLutIntensity" min="0" max="100" value="100">
+        <p class="hint">Default look: <b>PhotoLUT Natural HLG BT.2020</b> — an included LUT authored for HLG-encoded BT.2020 RGB. <a href="/luts/photolut-natural-hlg-bt2020.cube" download>Download the built-in LUT</a>. Custom LUTs must target the same input encoding and gamut; Rec.709 and camera-Log LUTs are not directly compatible. LUT strength is blended in linear light. Start at 50% and adjust to taste.</p>
+        <div class="range-head"><label for="videoLutIntensity">Video LUT intensity</label><strong id="videoLutIntensityValue">50%</strong></div>
+        <input type="range" id="videoLutIntensity" min="0" max="100" value="50">
         <p class="hint">The graded export remains HDR: HLG transfer, BT.2020 color, and 10-bit HEVC. Dolby Vision sources are not accepted for LUT re-encoding because their dynamic metadata cannot currently be preserved. HDR10/PQ inputs are inspected but LUT export is limited to HLG in this release.</p>
               <button class="primary" id="processVideoBtn" type="button" disabled>Apply LUT & export 10-bit video</button>
         <div class="progress-status" id="videoProcessStatus" role="status" aria-live="polite"></div>
