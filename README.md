@@ -14,15 +14,15 @@ Open http://127.0.0.1:8000 in a browser. The Compose port is bound to localhost 
 
 ### Run the HDR feature branch locally
 
-The HDR inspection/export UI is currently developed on `feat/pixel7-video-hdr-4k30`; it is not present on `main` until PR #30 is merged. To avoid testing an old container, check out the feature branch and use the verified startup script:
+The HDR-only video LUT workflow is developed on `feat/hdr-only-video-lut`. Check out the branch and rebuild the local container:
 
 ```bash
-git fetch origin feat/pixel7-video-hdr-4k30
-git switch --track origin/feat/pixel7-video-hdr-4k30
-bash scripts/run-local-hdr.sh
+git fetch origin feat/hdr-only-video-lut
+git switch --track origin/feat/hdr-only-video-lut
+docker compose up --build -d
 ```
 
-The script refuses to run on another branch or with uncommitted changes, fast-forwards the feature branch, rebuilds and recreates the Compose service, waits for the API, and checks that both the HDR UI panel and `/api/video/preserve-hdr` endpoint are actually being served. It prints the exact commit being tested. Run it again after new commits to update the local app.
+Open http://127.0.0.1:8000 and use the Video panel. The built-in Natural HLG LUT is available in `static/luts/photolut-natural-hlg-bt2020.cube`; an optional custom HLG-domain `.cube` LUT can be uploaded instead. The video LUT export accepts confirmed HLG/BT.2020/10-bit sources only and verifies the output before returning it.
 
 ```bash
 docker compose down
