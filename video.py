@@ -236,6 +236,11 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         raise ValueError(
             "This first video-processing workflow requires confirmed HLG, BT.2020, and at least 10-bit input."
         )
+    if metadata.get("dolby_vision_detected"):
+        raise ValueError(
+            "LUT export is disabled for Dolby Vision sources because re-encoding would discard Dolby Vision dynamic metadata. "
+            "Use HDR preservation to keep the original stream unchanged."
+        )
     # Parse once before invoking FFmpeg so malformed LUTs fail with a clear API error.
     core.parse_cube(lut_path)
     command = [
