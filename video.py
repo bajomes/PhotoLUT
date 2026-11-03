@@ -138,7 +138,7 @@ def normalize_probe_data(payload: dict[str, Any]) -> dict[str, Any]:
         "hdr_side_data": hdr_side_data,
         "frame_rate_numeric": round(fps, 3) if fps is not None else None,
         "is_4k30_or_higher": is_4k30,
-        "recommended_path": ("preserve_hdr" if hdr_metadata_complete else "inspect_color_metadata" if is_hdr else "sdr_to_hdr_optional" if transfer == "bt709" else "manual_color_confirmation"),
+        "recommended_path": ("preserve_hdr" if hdr_metadata_complete else "inspect_color_metadata" if is_hdr else "sdr_input" if transfer == "bt709" else "manual_color_confirmation"),
         "warnings": warnings,
     }
 
@@ -248,38 +248,41 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
     ]
     try:
-        subprocess.run(command, check=True, capture_output=True, text=True,
-                       timeout=VIDEO_PROCESS_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("Video processing exceeded the 20-minute time limit.") from exc
-    except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or "").strip()
-        raise ValueError(detail[-1000:] or "FFmpeg could not process this video.") from exc
-    if not output.is_file() or output.stat().st_size == 0:
-        raise RuntimeError("FFmpeg did not produce a valid output file.")
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True,
+                           timeout=VIDEO_PROCESS_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Video processing exceeded the 20-minute time limit.") from exc
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or "").strip()
+            raise ValueError(detail[-1000:] or "FFmpeg could not process this video.") from exc
+        if not output.is_file() or output.stat().st_size == 0:
+            raise RuntimeError("FFmpeg did not produce a valid output file.")
 
-    # Verify the encoded stream, not just the encoder arguments. This catches
-    # unexpected codec/pixel-format/color-tag changes before the file is served.
-    output_metadata = inspect_video(output)
-    expected = {
-        "codec": "hevc",
-        "codec_profile": "Main 10",
-        "pixel_format": "yuv420p10le",
-        "bit_depth": 10,
-        "color_transfer": "bt709",
-        "color_primaries": "bt709",
-        "color_matrix": "bt709",
-    }
-    mismatches = [
-        f"{key}: expected {value!r}, got {output_metadata.get(key)!r}"
-        for key, value in expected.items()
-        if output_metadata.get(key) != value
-    ]
-    if mismatches:
+        # Verify the encoded stream, not just the encoder arguments.
+        output_metadata = inspect_video(output)
+        expected = {
+            "codec": "hevc",
+            "codec_profile": "Main 10",
+            "pixel_format": "yuv420p10le",
+            "bit_depth": 10,
+            "color_transfer": "bt709",
+            "color_primaries": "bt709",
+            "color_matrix": "bt709",
+        }
+        mismatches = [
+            f"{key}: expected {value!r}, got {output_metadata.get(key)!r}"
+            for key, value in expected.items()
+            if output_metadata.get(key) != value
+        ]
+        if mismatches:
+            raise RuntimeError(
+                "Export verification failed; output was rejected. " + "; ".join(mismatches)
+            )
+    except BaseException:
+        # Do not leave partial, unverified, or failed exports in the temp directory.
         output.unlink(missing_ok=True)
-        raise RuntimeError(
-            "Export verification failed; output was rejected. " + "; ".join(mismatches)
-        )
+        raise
 
 
 
@@ -299,16 +302,17 @@ def preserve_hdr_video(source: Path, output: Path) -> dict[str, Any]:
         command += ["-tag:v", "hvc1"]
     command.append(str(output))
     try:
-        subprocess.run(command, check=True, capture_output=True, text=True,
-                       timeout=VIDEO_PROCESS_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("HDR remux exceeded the 20-minute time limit.") from exc
-    except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or "").strip()
-        raise ValueError(detail[-1000:] or "FFmpeg could not preserve this HDR video in MP4.") from exc
-    if not output.is_file() or output.stat().st_size == 0:
-        raise RuntimeError("FFmpeg did not produce a valid HDR MP4.")
-    try:
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True,
+                           timeout=VIDEO_PROCESS_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("HDR remux exceeded the 20-minute time limit.") from exc
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or "").strip()
+            raise ValueError(detail[-1000:] or "FFmpeg could not preserve this HDR video in MP4.") from exc
+        if not output.is_file() or output.stat().st_size == 0:
+            raise RuntimeError("FFmpeg did not produce a valid HDR MP4.")
+
         output_metadata = inspect_video(output)
         if not output_metadata.get("hdr_metadata_complete"):
             raise RuntimeError("HDR metadata verification failed after MP4 remux; the output was rejected.")
@@ -316,8 +320,8 @@ def preserve_hdr_video(source: Path, output: Path) -> dict[str, Any]:
             if output_metadata.get(key) != source_metadata.get(key):
                 raise RuntimeError(f"HDR verification mismatch for {key}; the output was rejected.")
         return output_metadata
-    except Exception:
-        # Never leave a failed or unverified remux available for accidental delivery.
+    except BaseException:
+        # A failed FFmpeg run or failed verification must never leave a deliverable-looking file.
         output.unlink(missing_ok=True)
         raise
 
