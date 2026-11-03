@@ -28,9 +28,9 @@ docker compose down
 ## Video inspection (early foundation)
 
 - Upload MP4, MOV, M4V, or MKV files up to 512 MiB to `POST /api/video/inspect`.
-- FFprobe reports codec, dimensions, pixel format, estimated bit depth, frame rate, duration, color primaries, matrix, transfer function, and range.
-- HLG is identified from the `arib-std-b67` transfer tag. The API separately reports whether BT.2020 primaries/matrix and at least 10-bit depth are also confirmed.
-- The separate `POST /api/video/process` workflow accepts confirmed HLG/BT.2020/10-bit footage and a `.cube` LUT, with adjustable intensity. It tone-maps HLG to SDR BT.709, applies the LUT, and exports an MP4 using HEVC Main 10 (`yuv420p10le`); audio is transcoded to AAC when present. This is an SDR deliverable, not an HLG/HDR master. Processing is limited to one video at a time, 512 MiB input, 10 MiB LUT, and a 20-minute FFmpeg timeout. Do not interpret a missing color tag as proof that footage is SDR.
+- FFprobe reports codec, dimensions, pixel format, estimated bit depth, frame rate, duration, color primaries, matrix, transfer function, range, and available Dolby Vision side-data/profile information.
+- HLG (`arib-std-b67`) and PQ/HDR10 (`smpte2084`) are classified separately. The API reports whether BT.2020 primaries/matrix and at least 10-bit depth are confirmed, plus whether the source is at least 3840×2160 at approximately 30 fps. Inspection never upscales or changes frame rate.
+- The existing `POST /api/video/process` workflow accepts confirmed HLG/BT.2020/10-bit footage and a `.cube` LUT, with adjustable intensity. It tone-maps HLG to SDR BT.709, applies the LUT, and exports an MP4 using HEVC Main 10 (`yuv420p10le`); audio is transcoded to AAC when present. This is an SDR deliverable, not an HLG/HDR master. HDR10/PQ and Dolby Vision are currently inspection-only; the new detection fields do not imply that PhotoLUT can author or preserve Dolby Vision metadata. Processing is limited to one video at a time, 512 MiB input, 10 MiB LUT, and a 20-minute FFmpeg timeout. Do not interpret a missing color tag as proof that footage is SDR.
 
 ## Verification coverage
 
