@@ -165,7 +165,7 @@ def test_transcode_invokes_ffmpeg_as_ten_bit_hlg_bt2020(tmp_path: Path):
     }
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", side_effect=[source_metadata, output_metadata]
-    ), patch("video.core.parse_cube"), patch("video.subprocess.run", side_effect=fake_run) as run:
+    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run", side_effect=fake_run) as run:
         video.transcode_hlg_video(source, lut, output, 0.5)
     command = run.call_args.args[0]
     assert command[command.index("-c:v") + 1] == "hevc_nvenc"
@@ -220,7 +220,7 @@ def test_transcode_rejects_unexpected_h264_output(tmp_path: Path):
 
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", side_effect=[source_metadata, bad_output_metadata]
-    ), patch("video.core.parse_cube"), patch("video.subprocess.run", side_effect=fake_run):
+    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run", side_effect=fake_run):
         with pytest.raises(RuntimeError, match="codec: expected 'hevc', got 'h264'"):
             video.transcode_hlg_video(source, lut, output, 1.0)
 
@@ -233,7 +233,7 @@ def test_transcode_removes_partial_output_when_ffmpeg_fails(tmp_path: Path):
     lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", return_value={"hlg_metadata_complete": True}
-    ), patch("video.core.parse_cube"), patch("video.subprocess.run") as run:
+    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run") as run:
         def fake_run(command, **kwargs):
             Path(command[-1]).write_bytes(b"partial")
             raise subprocess.CalledProcessError(1, command, stderr="encode failed")
@@ -252,7 +252,7 @@ def test_transcode_removes_output_when_reprobe_fails(tmp_path: Path):
         return subprocess.CompletedProcess(command, 0, "", "")
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", side_effect=[{"hlg_metadata_complete": True}, RuntimeError("ffprobe failed")]
-    ), patch("video.core.parse_cube"), patch("video.subprocess.run", side_effect=fake_run):
+    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run", side_effect=fake_run):
         with pytest.raises(RuntimeError, match="ffprobe failed"):
             video.transcode_hlg_video(source, lut, output, 1.0)
     assert not output.exists()
@@ -261,7 +261,7 @@ def test_transcode_removes_output_when_reprobe_fails(tmp_path: Path):
 def test_builtin_natural_hlg_lut_is_valid_and_bounded():
     lut = Path(__file__).resolve().parents[1] / "static" / "luts" / "photolut-natural-hlg-bt2020.cube"
     parsed = video.core.parse_cube(lut)
-    assert parsed.size == 33
+    assert parsed.size == 17
     assert parsed.table.min() >= 0.0
     assert parsed.table.max() <= 1.0
 
@@ -298,7 +298,7 @@ def test_transcode_falls_back_to_x265_when_nvenc_is_unavailable(tmp_path: Path):
 
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", side_effect=[source_metadata, output_metadata]
-    ), patch("video.core.parse_cube"), patch("video.subprocess.run", side_effect=fake_run) as run:
+    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run", side_effect=fake_run) as run:
         video.transcode_hlg_video(source, lut, output, 0.5)
 
     assert run.call_count == 2
@@ -306,3 +306,59 @@ def test_transcode_falls_back_to_x265_when_nvenc_is_unavailable(tmp_path: Path):
     assert cpu_command[cpu_command.index("-c:v") + 1] == "libx265"
     assert cpu_command[cpu_command.index("-pix_fmt") + 1] == "yuv420p10le"
     assert output.read_bytes() == b"cpu-mp4"
+
+
+def test_gpu_filter_routes_lut_through_vulkan_libplacebo(tmp_path: Path):
+    graph = video._gpu_ffmpeg_filter(tmp_path / "look.cube")
+    assert "hwupload" in graph
+    assert "libplacebo=lut=" in graph
+    assert "lut_type=native" in graph
+    assert "hwdownload" in graph
+    assert "bt2020" in graph
+    assert "arib-std-b67" in graph
+
+
+def test_intensity_lut_bakes_hlg_linear_mix(tmp_path: Path):
+    source = tmp_path / "identity.cube"
+    source.write_text(
+        "LUT_3D_SIZE 2\n"
+        "0 0 0\n1 0 0\n0 1 0\n1 1 0\n"
+        "0 0 1\n1 0 1\n0 1 1\n1 1 1\n",
+        encoding="ascii",
+    )
+    parsed = video.core.parse_cube(source)
+    baked = tmp_path / "baked.cube"
+    video._write_intensity_lut(parsed, 0.4, baked)
+    result = video.core.parse_cube(baked)
+    assert result.size == 2
+    assert result.table == pytest.approx(parsed.table, abs=2e-6)
+
+
+def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8, encoding="ascii")
+    output_metadata = {
+        "codec": "hevc", "codec_profile": "Main 10",
+        "pixel_format": "yuv420p10le", "bit_depth": 10,
+        "color_transfer": "arib-std-b67", "color_primaries": "bt2020",
+        "color_matrix": "bt2020nc",
+    }
+
+    def fake_run(command, **kwargs):
+        assert "-init_hw_device" in command
+        assert "vulkan=vk:0" in command
+        graph = command[command.index("-filter_complex") + 1]
+        assert "libplacebo=lut=" in graph
+        Path(command[-1]).write_bytes(b"gpu-mp4")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", side_effect=[{"hlg_metadata_complete": True}, output_metadata]
+    ), patch("video._supports_gpu_lut", return_value=True), patch(
+        "video.subprocess.run", side_effect=fake_run
+    ):
+        backend = video.transcode_hlg_video(source, lut, output, 0.5)
+
+    assert backend == "GPU (Vulkan/libplacebo 3D LUT)"
+    assert output.read_bytes() == b"gpu-mp4"
