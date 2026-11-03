@@ -234,7 +234,15 @@ button,input,select,textarea{letter-spacing:inherit}
 </div>
 <script>
 "use strict";
-const $=id=>document.getElementById(id);\n// Switch between focused photo and HDR-video workspaces.\nconst studioShell=$("studioShell");\ndocument.querySelectorAll("[data-studio-mode]").forEach(tab=>tab.addEventListener("click",()=>{\n  const mode=tab.dataset.studioMode;\n  studioShell.dataset.mode=mode;\n  document.querySelectorAll("[data-studio-mode]").forEach(item=>{const active=item===tab;item.classList.toggle("is-active",active);item.setAttribute("aria-pressed",String(active));});\n}));\n
+const $=id=>document.getElementById(id);
+// Switch between focused photo and HDR-video workspaces.
+const studioShell=$("studioShell");
+document.querySelectorAll("[data-studio-mode]").forEach(tab=>tab.addEventListener("click",()=>{
+  const mode=tab.dataset.studioMode;
+  studioShell.dataset.mode=mode;
+  document.querySelectorAll("[data-studio-mode]").forEach(item=>{const active=item===tab;item.classList.toggle("is-active",active);item.setAttribute("aria-pressed",String(active));});
+}));
+
 let rawFiles=[],cubeFile=null,previewRevision=0,previewLoading=false,processing=false,previewProcessed=false;
 function wireDrop(dropEl,inputEl,cb){
   dropEl.addEventListener("click",e=>{if(e.target!==inputEl)inputEl.click()});
