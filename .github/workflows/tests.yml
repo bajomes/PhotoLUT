@@ -82,8 +82,8 @@ jobs:
           fi
 
           grep -q '<title>PhotoLUT</title>' /tmp/photolut-index.html
-          docker exec photolut-ci ffmpeg -hide_banner -filters 2>&1 | grep -q libplacebo
-          docker exec photolut-ci ffmpeg -hide_banner -h filter=libplacebo 2>&1 | grep -q 'lut '
+          docker exec photolut-ci ffmpeg -hide_banner -filters 2>&1 | grep libplacebo >/dev/null
+          docker exec photolut-ci ffmpeg -hide_banner -h filter=libplacebo 2>&1 | grep 'lut ' >/dev/null
           grep -q 'id="previewCompare"' /tmp/photolut-index.html
           grep -q 'id="videoCompareStage"' /tmp/photolut-index.html
           grep -q 'id="videoCompareSeek"' /tmp/photolut-index.html
