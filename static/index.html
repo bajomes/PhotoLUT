@@ -338,6 +338,9 @@ videoInspectInput.addEventListener("change",()=>{
   $("inspectVideoBtn").disabled=!file;
   $("videoInspectResult").hidden=true;
   $("videoInspectStatus").textContent=file?(file.size>512*1024*1024?"File exceeds the 512 MiB limit.":(file.size/1024/1024).toFixed(1)+" MiB selected"):"";
+  $("videoProcessStatus").textContent="";
+  $("preserveHdrStatus").textContent="";
+  clearProcessedVideoPreview();
   if(file&&file.size>512*1024*1024)$("inspectVideoBtn").disabled=true;
 });
 
@@ -350,7 +353,11 @@ let videoHdrConfirmed=false,videoHlgConfirmed=false;
 const videoLutInput=$("videoLutInput");
 const videoLutIntensity=$("videoLutIntensity");
 const processVideoBtn=$("processVideoBtn");
-videoLutInput.addEventListener("change",()=>{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length&&videoHlgConfirmed);});
+videoLutInput.addEventListener("change",()=>{
+  processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length&&videoHlgConfirmed);
+  $("videoProcessStatus").textContent="";
+  clearProcessedVideoPreview();
+});
 videoInspectInput.addEventListener("change",()=>{videoHdrConfirmed=false;videoHlgConfirmed=false;preserveHdrBtn.disabled=true;processVideoBtn.disabled=true;});
 videoLutIntensity.addEventListener("input",()=>{$("videoLutIntensityValue").textContent=videoLutIntensity.value+"%";});
 processVideoBtn.addEventListener("click",async()=>{
