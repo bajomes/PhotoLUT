@@ -74,13 +74,49 @@ button,input,select,textarea{letter-spacing:inherit}
 
 
 .video-preview-panel{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#10110d}.video-compare-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:9px;font-size:11px}.video-compare-heading strong{font-weight:650}.video-compare-heading span{color:var(--muted);font-variant-numeric:tabular-nums}.video-compare-stage{--compare-pos:50%;position:relative;aspect-ratio:16/9;min-height:210px;max-height:520px;overflow:hidden;border-radius:7px;background:#000;touch-action:pan-y;user-select:none;cursor:ew-resize}.video-compare-stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;display:block}.video-compare-stage #processedVideoPreview{clip-path:inset(0 0 0 var(--compare-pos))}.video-compare-chip{position:absolute;top:10px;padding:5px 8px;border:1px solid #45473c;border-radius:5px;background:#10110de8;color:#f0efe7;font-size:9px;letter-spacing:.1em;font-weight:750;pointer-events:none}.before-chip{left:10px}.after-chip{right:10px}.video-compare-divider{position:absolute;top:0;bottom:0;left:var(--compare-pos);width:2px;background:#fff;transform:translateX(-1px);pointer-events:none}.video-compare-divider:after{content:"↔";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;background:#fff;color:#171813;display:grid;place-items:center;font-size:13px;line-height:28px;text-align:center;box-shadow:0 1px 5px #0008}.video-compare-label{display:block;margin:10px 0 6px;color:var(--muted);font-size:10px}.video-timeline{margin:12px 2px 0}.video-timeline input[type=range]{display:block;width:100%;height:5px;margin:0;border-radius:99px;appearance:none;background:linear-gradient(to right,var(--accent) 0%,var(--accent) var(--seek-progress,0%),#45473c var(--seek-progress,0%),#45473c 100%);cursor:pointer}.video-timeline input[type=range]::-webkit-slider-thumb{appearance:none;width:13px;height:13px;border:2px solid var(--panel);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent)}.video-timeline input[type=range]::-moz-range-thumb{width:10px;height:10px;border:2px solid var(--panel);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent)}.video-timeline input[type=range]:disabled{opacity:.4;cursor:default}.video-compare-controls{display:flex;align-items:center;gap:7px;margin-top:10px}.video-compare-controls .ghost{width:auto;min-width:0;margin:0;padding:8px 11px;font-size:10px}.video-compare-controls .play-control{min-width:66px;color:var(--text);border-color:#56594a}.video-compare-controls .time-readout{margin-left:auto;color:var(--muted);font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}.video-compare-controls select{width:auto;min-width:64px;padding:7px 8px;font-size:10px}.video-compare-controls .fullscreen-control{white-space:nowrap}@media(max-width:480px){.video-compare-controls{gap:5px}.video-compare-controls .ghost{padding:8px}.video-compare-controls .time-readout{font-size:9px}.video-compare-controls select{min-width:55px;padding:7px 5px}}.video-preview-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}.video-preview-actions .hint{margin:0}.video-inspect-panel{margin-top:16px}.video-inspect-body{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr);gap:22px;align-items:start}.video-inspect-heading{font-size:13px}.video-inspect-drop{display:block;margin-top:12px}.video-inspect-result{border:1px solid var(--line);border-radius:10px;padding:14px;background:#141510;min-width:0}.video-inspect-result h3{font-size:12px;margin:0 0 10px}.video-meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.video-meta-item{min-width:0}.video-meta-item small{display:block;color:var(--muted);font-size:9px}.video-meta-item b{display:block;font-size:11px;overflow-wrap:anywhere}.video-hlg-status{padding:9px 10px;border-radius:7px;margin-bottom:12px;font-size:11px}.video-hlg-status.good{background:#20291a;color:#d4f078}.video-hlg-status.warn{background:#2b2418;color:#f2c47c}@media(max-width:760px){.video-inspect-body{grid-template-columns:1fr}.video-meta-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Studio navigation and focused workspaces. */
+.topbar{height:72px;padding-inline:clamp(16px,3vw,42px)}
+.studio-nav{display:flex;align-items:center;gap:5px;padding:4px;border:1px solid var(--line);border-radius:11px;background:#171812}
+.studio-tab{border:0;border-radius:8px;padding:9px 15px;background:transparent;color:var(--muted);font-size:12px;font-weight:650;cursor:pointer;transition:background .16s,color .16s}
+.studio-tab:hover{color:var(--text)}.studio-tab.is-active{background:#303226;color:var(--accent);box-shadow:inset 0 0 0 1px #505440}
+.shell{max-width:1680px;padding-top:26px}
+.shell[data-mode="photos"] .video-inspect-panel{display:none}
+.shell[data-mode="video"] #inputArea,.shell[data-mode="video"] #result{display:none!important}
+.shell[data-mode="video"] .video-inspect-panel{display:block;margin-top:0}
+.shell[data-mode="video"] .video-inspect-body{grid-template-columns:minmax(280px,.72fr) minmax(0,1.28fr);gap:24px;padding:22px}
+.video-inspect-panel .panel-head{padding:18px 22px}
+.video-inspect-heading{font-size:15px;letter-spacing:-.02em}
+.video-inspect-drop{min-height:126px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.video-inspect-body .primary{margin-top:12px}
+.video-inspect-body .hint{font-size:11px;line-height:1.6}
+.video-inspect-body .video-inspect-result{min-height:100%;padding:18px;background:#141510}
+.video-preview-panel{margin:0 22px 22px;padding:18px;border:1px solid var(--line);border-radius:12px;background:#10110d}
+.video-compare-heading{font-size:12px;margin-bottom:13px}
+.video-compare-stage{aspect-ratio:16/9;min-height:260px;max-height:min(68vh,760px);border:1px solid #303127;border-radius:9px}
+.video-timeline{margin:16px 4px 0}
+.video-timeline input[type=range]{height:6px}
+.video-compare-controls{gap:9px;margin-top:13px}
+.video-compare-controls .ghost{padding:9px 13px;font-size:11px}
+.video-compare-controls .play-control{min-width:82px}
+.video-compare-controls .time-readout{font-size:11px}
+.video-preview-actions{margin-top:14px;align-items:center}
+.video-preview-actions .primary{width:auto;min-width:220px;margin:0;padding:11px 18px}
+.video-preview-actions .hint{font-size:10px}
+#videoLutInput{display:block;width:100%;max-width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--muted);font-size:11px}
+#videoLutInput::file-selector-button{margin-right:10px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:#303226;color:var(--text);font:inherit;cursor:pointer}
+@media(max-width:760px){.topbar{height:auto;min-height:64px;flex-wrap:wrap;padding:10px 14px;gap:10px}.studio-nav{margin-left:auto}.studio-tab{padding:8px 10px;font-size:11px}.shell{padding:16px 12px 26px}.shell[data-mode="video"] .video-inspect-body{grid-template-columns:1fr;padding:14px;gap:14px}.video-preview-panel{margin:0 12px 14px;padding:11px}.video-compare-stage{min-height:190px;max-height:none}.video-preview-actions{align-items:stretch;flex-direction:column}.video-preview-actions .primary{width:100%}.video-compare-controls{flex-wrap:wrap}.video-compare-controls .time-readout{margin-left:auto}}
 </style>
 </head>
 <body>
 <header class="topbar">
   <div class="brand"><div class="brand-mark">P</div><div>PhotoLUT<small>STUDIO</small></div></div>
+  <nav class="studio-nav" aria-label="Workspace">
+    <button type="button" class="studio-tab is-active" data-studio-mode="photos" aria-pressed="true">Photo editor</button>
+    <button type="button" class="studio-tab" data-studio-mode="video" aria-pressed="false">HDR video</button>
+  </nav>
 </header>
-<main class="shell">
+<main class="shell" id="studioShell" data-mode="photos">
   <section id="inputArea" class="workspace">
     <aside class="panel source-panel">
       <div class="panel-head"><span class="panel-title">Source files</span></div>
@@ -131,11 +167,11 @@ button,input,select,textarea{letter-spacing:inherit}
     </aside>
   </section>
   <section class="panel video-inspect-panel" aria-labelledby="videoInspectTitle">
-    <div class="panel-head"><span class="panel-title" id="videoInspectTitle">VIDEO · HDR INSPECTION & EXPORT</span><span class="step">Early access</span></div>
+    <div class="panel-head"><span class="panel-title" id="videoInspectTitle">VIDEO · HDR INSPECTION & EXPORT</span><span class="step">HLG · BT.2020 · 10-bit</span></div>
     <div class="panel-body video-inspect-body">
       <div>
-        <b class="video-inspect-heading">Inspect a Pixel or other HDR video</b>
-        <p class="hint">Inspect HDR format, resolution, frame rate, bit depth, and color metadata. The LUT export currently grades confirmed HLG/BT.2020 footage and keeps the result HDR HLG/BT.2020 at 10-bit.</p>
+        <b class="video-inspect-heading">Prepare an HDR video</b>
+        <p class="hint">Inspect source metadata, confirm HLG/BT.2020 compatibility, then apply a LUT and export an HDR HEVC Main 10 file.</p>
         <label class="drop video-inspect-drop" for="videoInspectInput" id="videoInspectDrop">
           <span class="drop-icon">▶</span><b id="videoInspectName">Choose an original video</b><span>MP4 · MOV · M4V · MKV</span><span class="browse">Browse video</span>
         </label>
@@ -144,13 +180,17 @@ button,input,select,textarea{letter-spacing:inherit}
         <div class="progress-status" id="videoInspectStatus" role="status" aria-live="polite"></div>
         <div class="mini-label"><label for="videoLutInput">CUSTOM HLG .CUBE LUT (OPTIONAL)</label></div>
         <input type="file" id="videoLutInput" accept=".cube">
-        <p class="hint">Default look: <b>PhotoLUT Neutral HLG BT.2020</b> — a neutral identity LUT that preserves the source colors without adding a tint. <a href="/luts/photolut-neutral-hlg-bt2020.cube" download>Download the built-in LUT</a>. Custom LUTs must target the same input encoding and gamut; Rec.709 and camera-Log LUTs are not directly compatible. LUT strength is blended in linear light. The neutral default is safe at 100%; use a compatible custom HLG/BT.2020 LUT for a creative look.</p>
+        <p class="hint">Default: <b>Neutral HLG BT.2020</b> (identity LUT). It preserves the source look. For creative grading, load a LUT authored for HLG-encoded BT.2020 RGB; Rec.709 and camera-Log LUTs are not interchangeable. <a href="/luts/photolut-neutral-hlg-bt2020.cube" download>Download neutral LUT</a>.</p>
         <div class="range-head"><label for="videoLutIntensity">Video LUT intensity</label><strong id="videoLutIntensityValue">100%</strong></div>
         <input type="range" id="videoLutIntensity" min="0" max="100" value="100">
         <p class="hint">The graded export remains HDR: HLG transfer, BT.2020 color, and 10-bit HEVC. Dolby Vision sources are not accepted for LUT re-encoding because their dynamic metadata cannot currently be preserved. HDR10/PQ inputs are inspected but LUT export is limited to HLG in this release.</p>
               <button class="primary" id="processVideoBtn" type="button" disabled>Apply LUT & export 10-bit video</button>
         <div class="progress-status" id="videoProcessStatus" role="status" aria-live="polite"></div>
-        <div class="video-preview-panel" id="videoPreviewPanel" hidden>
+>
+      </div>
+      <div id="videoInspectResult" class="video-inspect-result" hidden aria-live="polite"></div>
+    </div>
+            <div class="video-preview-panel" id="videoPreviewPanel" hidden>
           <div class="video-compare-heading"><strong>Before / After preview</strong><span id="videoCompareTime">00:00 / 00:00</span></div>
           <div class="video-compare-stage" id="videoCompareStage" aria-label="Drag the divider to compare the original and graded video">
             <video id="videoBeforePreview" muted playsinline preload="metadata"></video>
@@ -171,10 +211,7 @@ button,input,select,textarea{letter-spacing:inherit}
             <button class="ghost fullscreen-control" id="videoFullscreen" type="button">Fullscreen</button>
           </div>
           <div class="video-preview-actions"><button class="primary" id="downloadProcessedVideo" type="button">Download processed MP4</button><span class="hint">Muted visual comparison; the exported file retains its audio.</span></div>
-        </div>
-      </div>
-      <div id="videoInspectResult" class="video-inspect-result" hidden aria-live="polite"></div>
-    </div>
+        </div
   </section>
   <section id="result">
     <div class="results-head"><div><h2>Results</h2><p id="summary"></p></div><div class="result-actions"><button class="ghost new-batch" id="newBatchBtn">Start a new batch</button><button type="button" class="zip-btn" id="dlZip" aria-haspopup="dialog" aria-controls="downloadPicker">↓ &nbsp; Download all</button></div></div>
@@ -198,7 +235,7 @@ button,input,select,textarea{letter-spacing:inherit}
 </div>
 <script>
 "use strict";
-const $=id=>document.getElementById(id);
+const $=id=>document.getElementById(id);\n// Switch between focused photo and HDR-video workspaces.\nconst studioShell=$("studioShell");\ndocument.querySelectorAll("[data-studio-mode]").forEach(tab=>tab.addEventListener("click",()=>{\n  const mode=tab.dataset.studioMode;\n  studioShell.dataset.mode=mode;\n  document.querySelectorAll("[data-studio-mode]").forEach(item=>{const active=item===tab;item.classList.toggle("is-active",active);item.setAttribute("aria-pressed",String(active));});\n}));\n
 let rawFiles=[],cubeFile=null,previewRevision=0,previewLoading=false,processing=false,previewProcessed=false;
 function wireDrop(dropEl,inputEl,cb){
   dropEl.addEventListener("click",e=>{if(e.target!==inputEl)inputEl.click()});
