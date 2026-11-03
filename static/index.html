@@ -144,7 +144,7 @@ button,input,select,textarea{letter-spacing:inherit}
         <div class="progress-status" id="videoInspectStatus" role="status" aria-live="polite"></div>
         <div class="mini-label"><label for="videoLutInput">CUSTOM HLG .CUBE LUT (OPTIONAL)</label></div>
         <input type="file" id="videoLutInput" accept=".cube">
-        <p class="hint">Default look: <b>PhotoLUT Neutral HLG BT.2020</b> — a neutral identity LUT that preserves the source colors without adding a tint. <a href="/luts/photolut-natural-hlg-bt2020.cube" download>Download the built-in LUT</a>. Custom LUTs must target the same input encoding and gamut; Rec.709 and camera-Log LUTs are not directly compatible. LUT strength is blended in linear light. The neutral default is safe at 100%; use a compatible custom HLG/BT.2020 LUT for a creative look.</p>
+        <p class="hint">Default look: <b>PhotoLUT Neutral HLG BT.2020</b> — a neutral identity LUT that preserves the source colors without adding a tint. <a href="/luts/photolut-neutral-hlg-bt2020.cube" download>Download the built-in LUT</a>. Custom LUTs must target the same input encoding and gamut; Rec.709 and camera-Log LUTs are not directly compatible. LUT strength is blended in linear light. The neutral default is safe at 100%; use a compatible custom HLG/BT.2020 LUT for a creative look.</p>
         <div class="range-head"><label for="videoLutIntensity">Video LUT intensity</label><strong id="videoLutIntensityValue">100%</strong></div>
         <input type="range" id="videoLutIntensity" min="0" max="100" value="100">
         <p class="hint">The graded export remains HDR: HLG transfer, BT.2020 color, and 10-bit HEVC. Dolby Vision sources are not accepted for LUT re-encoding because their dynamic metadata cannot currently be preserved. HDR10/PQ inputs are inspected but LUT export is limited to HLG in this release.</p>
@@ -487,8 +487,8 @@ processVideoBtn.addEventListener("click",async()=>{
   if(lut&&!lut.name.toLowerCase().endsWith(".cube")){$("videoProcessStatus").textContent="Choose a valid .cube LUT.";return;}
   processVideoBtn.disabled=true;$("videoProcessStatus").textContent="Applying HDR HLG LUT and encoding 10-bit HEVC…";
   try{
-    if(!lut){const preset=await fetch("/luts/photolut-natural-hlg-bt2020.cube");if(!preset.ok)throw new Error("The built-in HLG LUT could not be loaded.");lut=await preset.blob();}
-    const form=new FormData();form.append("video_file",source);form.append("cube",lut,videoLutInput.files?.[0]?.name||"photolut-natural-hlg-bt2020.cube");form.append("intensity",String(Number(videoLutIntensity.value)/100));
+    if(!lut){const preset=await fetch("/luts/photolut-neutral-hlg-bt2020.cube");if(!preset.ok)throw new Error("The built-in HLG LUT could not be loaded.");lut=await preset.blob();}
+    const form=new FormData();form.append("video_file",source);form.append("cube",lut,videoLutInput.files?.[0]?.name||"photolut-neutral-hlg-bt2020.cube");form.append("intensity",String(Number(videoLutIntensity.value)/100));
     const response=await fetch("/api/video/process",{method:"POST",body:form});
     if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.detail||"Video processing failed ("+response.status+")");}
     const blob=await response.blob();
