@@ -88,7 +88,7 @@ jobs:
           grep -q 'family=Inter:wght@100..900' /tmp/photolut-index.html
           grep -q 'Process batch' /tmp/photolut-index.html
           curl --fail --silent http://127.0.0.1:8000/static/luts/photolut-natural-hlg-bt2020.cube --output /tmp/photolut-natural-hlg-bt2020.cube
-          grep -q 'LUT_3D_SIZE 17' /tmp/photolut-natural-hlg-bt2020.cube
+          grep -q 'LUT_3D_SIZE 33' /tmp/photolut-natural-hlg-bt2020.cube
           python - <<'PY'
           from html.parser import HTMLParser
           from pathlib import Path
