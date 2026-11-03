@@ -239,31 +239,59 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         )
     if metadata.get("dolby_vision_detected"):
         raise ValueError(
-            "LUT export is disabled for Dolby Vision sources because re-encoding would discard Dolby Vision dynamic metadata. "
-            "Use HDR preservation to keep the original stream unchanged."
+            "LUT export is disabled for Dolby Vision sources because re-encoding would discard Dolby Vision dynamic metadata."
         )
     # Parse once before invoking FFmpeg so malformed LUTs fail with a clear API error.
     core.parse_cube(lut_path)
-    command = [
+    common_command = [
         ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
         "-i", str(source), "-filter_complex", _ffmpeg_filter(lut_path, intensity),
-        "-map", "[outv]", "-map", "0:a?", "-c:v", "libx265",
-        "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p10le",
+        "-map", "[outv]", "-map", "0:a?",
+    ]
+    output_metadata_args = [
         "-tag:v", "hvc1", "-color_range", "tv",
         "-color_primaries", "bt2020", "-color_trc", "arib-std-b67",
         "-colorspace", "bt2020nc",
-        "-x265-params", "repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
     ]
+    # Prefer 10-bit NVENC when a compatible GPU is exposed to the container.
+    # FFmpeg may contain the encoder but still lack a usable GPU at runtime,
+    # so retry with x265 when NVENC initialization or encoding fails.
+    encoder_options = [
+        [
+            "-c:v", "hevc_nvenc", "-preset", "p5", "-tune", "hq",
+            "-profile:v", "main10", "-pix_fmt", "p010le",
+            "-rc", "vbr", "-cq", "19", "-b:v", "0",
+            "-spatial_aq", "1", "-temporal_aq", "1",
+        ],
+        [
+            "-c:v", "libx265", "-preset", "medium", "-crf", "18",
+            "-pix_fmt", "yuv420p10le",
+            "-x265-params",
+            "repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
+        ],
+    ]
     try:
-        try:
-            subprocess.run(command, check=True, capture_output=True, text=True,
-                           timeout=VIDEO_PROCESS_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("Video processing exceeded the 20-minute time limit.") from exc
-        except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or "").strip()
-            raise ValueError(detail[-1000:] or "FFmpeg could not process this video.") from exc
+        last_error = None
+        for index, options in enumerate(encoder_options):
+            command = common_command + options + output_metadata_args
+            try:
+                subprocess.run(
+                    command, check=True, capture_output=True, text=True,
+                    timeout=VIDEO_PROCESS_TIMEOUT_SECONDS,
+                )
+                break
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError("Video processing exceeded the 20-minute time limit.") from exc
+            except subprocess.CalledProcessError as exc:
+                output.unlink(missing_ok=True)
+                last_error = exc
+                if index == len(encoder_options) - 1:
+                    detail = (exc.stderr or "").strip()
+                    raise ValueError(detail[-1000:] or "FFmpeg could not process this video.") from exc
+        if last_error is not None and not output.is_file():
+            detail = (last_error.stderr or "").strip()
+            raise ValueError(detail[-1000:] or "FFmpeg could not process this video.")
         if not output.is_file() or output.stat().st_size == 0:
             raise RuntimeError("FFmpeg did not produce a valid output file.")
 
