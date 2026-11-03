@@ -135,7 +135,7 @@ button,input,select,textarea{letter-spacing:inherit}
     <div class="panel-body video-inspect-body">
       <div>
         <b class="video-inspect-heading">Inspect a Pixel or other HDR video</b>
-        <p class="hint">Inspect HLG metadata, apply a .cube LUT, then preview the SDR BT.709 10-bit result before choosing whether to download it.</p>
+        <p class="hint">Inspect HLG, HDR10/PQ, Dolby Vision side data, resolution, frame rate, and bit depth. Existing processing below remains an SDR BT.709 export; HDR-preserving export is being developed separately.</p>
         <label class="drop video-inspect-drop" for="videoInspectInput" id="videoInspectDrop">
           <span class="drop-icon">▶</span><b id="videoInspectName">Choose an original video</b><span>MP4 · MOV · M4V · MKV</span><span class="browse">Browse video</span>
         </label>
@@ -380,7 +380,7 @@ $("inspectVideoBtn").addEventListener("click",async()=>{
     const result=$("videoInspectResult");result.replaceChildren();
     const heading=document.createElement("h3");heading.textContent="Inspection result";result.append(heading);
     const status=document.createElement("div");status.className="video-hlg-status "+(data.hlg_metadata_complete?"good":"warn");
-    status.textContent=data.hlg_metadata_complete?"HLG detected · BT.2020 · at least 10-bit confirmed":data.is_hlg?"HLG transfer detected, but some HDR metadata is incomplete":"HLG not confirmed from the file metadata";result.append(status);
+    status.textContent=data.hlg_metadata_complete?"HLG detected · BT.2020 · at least 10-bit confirmed":data.is_hlg?"HDR transfer detected, but some HDR metadata is incomplete":"HDR not confirmed from the file metadata";result.append(status);
     const grid=document.createElement("div");grid.className="video-meta-grid";
     const fields=[["Codec",data.codec],["Profile",data.codec_profile],["Resolution",data.width&&data.height?data.width+" × "+data.height:null],["Pixel format",data.pixel_format],["Bit depth",data.bit_depth?data.bit_depth+"-bit":null],["Frame rate",data.frame_rate],["Duration",data.duration_seconds==null?null:data.duration_seconds+" s"],["Transfer",data.color_transfer],["Primaries",data.color_primaries],["Matrix",data.color_matrix],["Range",data.color_range],["Container",data.container]];
     for(const [label,value] of fields){const cell=document.createElement("div");cell.className="video-meta-item";const small=document.createElement("small");small.textContent=label;const bold=document.createElement("b");bold.textContent=value==null?"Unknown":String(value);cell.append(small,bold);grid.append(cell)}
