@@ -1,9 +1,4 @@
-"""Video metadata inspection for the HLG HDR workflow.
-
-This module deliberately inspects source metadata only. It does not decode,
-grade, tone-map, or re-encode video; those operations belong to later stages
-with explicit color-management tests.
-"""
+"""Video metadata inspection and HLG HDR LUT processing."""
 from __future__ import annotations
 
 import asyncio
@@ -212,15 +207,26 @@ VIDEO_PROCESS_TIMEOUT_SECONDS = 20 * 60
 
 
 def _ffmpeg_filter(lut_path: Path, intensity: float) -> str:
-    """Apply an HLG/BT.2020-domain LUT and encode back to HLG/BT.2020."""
+    """Apply an HLG-domain LUT and mix its strength in linear-light RGB.
+
+    The .cube is evaluated on HLG-encoded BT.2020 RGB, as authored. Both the
+    ungraded and graded branches are then inverse-transferred to linear light
+    before intensity blending; the result is re-encoded to HLG for delivery.
+    """
     lut = str(lut_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
     amount = format(intensity, ".6f")
     return (
         "[0:v]zscale=matrixin=bt2020nc:transferin=arib-std-b67:primariesin=bt2020:"
         "matrix=gbr:transfer=arib-std-b67:primaries=bt2020:range=full,"
-        "format=gbrpf32le,split=2[base][forlut];"
-        f"[forlut]lut3d=file='{lut}':interp=tetrahedral[graded];"
-        f"[base][graded]blend=all_expr='A*(1-{amount})+B*{amount}',"
+        "format=gbrpf32le,split=2[base_hlg][forlut];"
+        f"[forlut]lut3d=file='{lut}':interp=tetrahedral[graded_hlg];"
+        "[base_hlg]zscale=matrixin=gbr:transferin=arib-std-b67:primariesin=bt2020:"
+        "rangein=full:matrix=gbr:transfer=linear:primaries=bt2020:range=full[base_linear];"
+        "[graded_hlg]zscale=matrixin=gbr:transferin=arib-std-b67:primariesin=bt2020:"
+        "rangein=full:matrix=gbr:transfer=linear:primaries=bt2020:range=full[graded_linear];"
+        f"[base_linear][graded_linear]blend=all_expr='A*(1-{amount})+B*{amount}'[mixed_linear];"
+        "[mixed_linear]zscale=matrixin=gbr:transferin=linear:primariesin=bt2020:"
+        "rangein=full:matrix=gbr:transfer=arib-std-b67:primaries=bt2020:range=full,"
         "zscale=matrixin=gbr:transferin=arib-std-b67:primariesin=bt2020:rangein=full:"
         "matrix=bt2020nc:transfer=arib-std-b67:primaries=bt2020:range=limited,"
         "format=yuv420p10le[outv]"
