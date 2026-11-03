@@ -38,6 +38,31 @@ def test_normalize_identifies_complete_hlg10_metadata():
     assert result["warnings"] == []
 
 
+def test_normalize_identifies_pq_hdr10_and_4k30():
+    payload = json.loads(json.dumps(HLG_PAYLOAD))
+    stream = payload["streams"][0]
+    stream["color_transfer"] = "smpte2084"
+    result = video.normalize_probe_data(payload)
+    assert result["is_pq"] is True
+    assert result["is_hdr"] is True
+    assert result["hdr_format"] == "HDR10 / PQ"
+    assert result["hdr_metadata_complete"] is True
+    assert result["is_4k30_or_higher"] is True
+    assert result["recommended_path"] == "preserve_hdr"
+
+
+def test_normalize_does_not_call_sdr_hdr_or_force_upscale():
+    payload = json.loads(json.dumps(HLG_PAYLOAD))
+    stream = payload["streams"][0]
+    stream.update(width=1920, height=1080, avg_frame_rate="30/1", color_transfer="bt709",
+                  color_primaries="bt709", color_space="bt709", pix_fmt="yuv420p")
+    result = video.normalize_probe_data(payload)
+    assert result["is_hdr"] is False
+    assert result["hdr_format"] == "SDR / BT.709"
+    assert result["is_4k30_or_higher"] is False
+    assert result["recommended_path"] == "sdr_to_hdr_optional"
+
+
 def test_hlg_transfer_without_complete_metadata_is_flagged():
     payload = json.loads(json.dumps(HLG_PAYLOAD))
     payload["streams"][0]["color_primaries"] = "unknown"
