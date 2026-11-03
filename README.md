@@ -12,6 +12,18 @@ docker compose up --build -d
 
 Open http://127.0.0.1:8000 in a browser. The Compose port is bound to localhost by default. Job uploads and results stay in the container's temporary `/tmp/photolut-jobs` directory and are cleaned automatically after 30 minutes; Compose no longer creates a persistent `./jobs` mount on the host. To stop the app:
 
+### Run the HDR feature branch locally
+
+The HDR inspection/export UI is currently developed on `feat/pixel7-video-hdr-4k30`; it is not present on `main` until PR #30 is merged. To avoid testing an old container, check out the feature branch and use the verified startup script:
+
+```bash
+git fetch origin feat/pixel7-video-hdr-4k30
+git switch --track origin/feat/pixel7-video-hdr-4k30
+bash scripts/run-local-hdr.sh
+```
+
+The script refuses to run on another branch or with uncommitted changes, fast-forwards the feature branch, rebuilds and recreates the Compose service, waits for the API, and checks that both the HDR UI panel and `/api/video/preserve-hdr` endpoint are actually being served. It prints the exact commit being tested. Run it again after new commits to update the local app.
+
 ```bash
 docker compose down
 ```
