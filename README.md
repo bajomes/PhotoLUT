@@ -9,7 +9,7 @@ Install Docker Desktop or Docker Engine with the Compose plugin. Check out the c
 ```bash
 git fetch origin
 git switch main
- git pull --ff-only
+git pull --ff-only
 docker compose up --build -d
 ```
 
