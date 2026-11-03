@@ -175,3 +175,44 @@ def test_transcode_invokes_ffmpeg_as_ten_bit_bt709(tmp_path: Path):
     assert "-pix_fmt" in command and command[command.index("-pix_fmt") + 1] == "yuv420p10le"
     assert command[command.index("-color_trc") + 1] == "bt709"
     assert output.read_bytes() == b"mp4"
+
+
+
+def test_normalize_preserves_hdr_mastering_and_dolby_vision_side_data():
+    payload = json.loads(json.dumps(HLG_PAYLOAD))
+    payload["streams"][0]["side_data_list"] = [
+        {"side_data_type": "Mastering display metadata", "red_x": "0.68",
+         "max_luminance": "1000 cd/m2"},
+        {"side_data_type": "Content light level metadata", "max_content": 1000,
+         "max_average": 400},
+        {"side_data_type": "DOVI configuration record", "dv_profile": 8,
+         "dv_level": 6, "rpu_present": 1},
+        {"side_data_type": "Display Matrix", "rotation": 90},
+    ]
+    result = video.normalize_probe_data(payload)
+    assert len(result["hdr_side_data"]) == 3
+    assert result["dolby_vision_detected"] is True
+    assert result["dolby_vision_profile"] == 8
+
+
+def test_preserve_hdr_rejects_changed_mastering_metadata(tmp_path: Path):
+    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
+    source.write_bytes(b"video")
+    source_metadata = {
+        "hdr_metadata_complete": True, "codec": "hevc",
+        "color_transfer": "smpte2084", "color_primaries": "bt2020",
+        "color_matrix": "bt2020nc", "bit_depth": 10,
+        "hdr_side_data": [{"side_data_type": "Content light level metadata",
+                           "max_content": 1000, "max_average": 400}],
+    }
+    output_metadata = {**source_metadata, "hdr_side_data": []}
+
+    def fake_run(command, **kwargs):
+        Path(command[-1]).write_bytes(b"mp4")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", side_effect=[source_metadata, output_metadata]
+    ), patch("video.subprocess.run", side_effect=fake_run):
+        with pytest.raises(RuntimeError, match="hdr_side_data"):
+            video.preserve_hdr_video(source, output)
