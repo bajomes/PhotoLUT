@@ -51,9 +51,8 @@ def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
         "-f", "lavfi", "-i", "sine=frequency=1000:sample_rate=48000:duration=1",
         "-shortest",
         "-vf",
-        "zscale=matrixin=bt709:transferin=bt709:primariesin=bt709:"
-        "matrix=bt2020nc:transfer=arib-std-b67:primaries=bt2020,"
-        "rangein=limited:matrix=bt2020nc:transfer=arib-std-b67:primaries=bt2020:range=limited,"
+        "zscale=matrixin=bt709:transferin=bt709:primariesin=bt709:rangein=limited:"
+        "matrix=bt2020nc:transfer=arib-std-b67:primaries=bt2020:range=limited,"
         "format=yuv420p10le",
         "-c:v", "libx265", "-preset", "ultrafast", "-crf", "12",
         "-x265-params", "log-level=error",
