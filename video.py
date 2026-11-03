@@ -336,8 +336,8 @@ async def preserve_uploaded_hdr_video(video_file: UploadFile = File(...)) -> Fil
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise
     finally:
-        await video_file.close()
         VIDEO_PROCESSING_SLOT.release()
+        await video_file.close()
 
 @router.post("/process")
 async def process_uploaded_video(
@@ -402,6 +402,6 @@ async def process_uploaded_video(
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise
     finally:
+        VIDEO_PROCESSING_SLOT.release()
         await video_file.close()
         await cube.close()
-        VIDEO_PROCESSING_SLOT.release()
