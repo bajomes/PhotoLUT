@@ -118,6 +118,35 @@ def test_video_filter_keeps_ten_bit_and_applies_intensity(tmp_path: Path):
     assert "format=yuv420p10le[outv]" in graph
 
 
+def test_preserve_hdr_rejects_unconfirmed_source(tmp_path: Path):
+    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
+    source.write_bytes(b"video")
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", return_value={"hdr_metadata_complete": False}
+    ), patch("video.subprocess.run") as run:
+        with pytest.raises(ValueError, match="requires confirmed"):
+            video.preserve_hdr_video(source, output)
+    run.assert_not_called()
+
+
+def test_preserve_hdr_stream_copies_and_verifies_metadata(tmp_path: Path):
+    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
+    source.write_bytes(b"video")
+    metadata = {"hdr_metadata_complete": True, "codec": "hevc", "color_transfer": "arib-std-b67",
+                "color_primaries": "bt2020", "color_matrix": "bt2020nc", "bit_depth": 10}
+    def fake_run(command, **kwargs):
+        Path(command[-1]).write_bytes(b"mp4")
+        assert "copy" in command
+        assert "-tag:v" in command and "hvc1" in command
+        return subprocess.CompletedProcess(command, 0, "", "")
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", side_effect=[metadata, metadata]
+    ), patch("video.subprocess.run", side_effect=fake_run):
+        result = video.preserve_hdr_video(source, output)
+    assert result["hdr_metadata_complete"] is True
+    assert output.read_bytes() == b"mp4"
+
+
 def test_transcode_rejects_unconfirmed_hlg_before_ffmpeg(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
