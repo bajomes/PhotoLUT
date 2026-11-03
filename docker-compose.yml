@@ -1,6 +1,7 @@
 services:
     lutphoto:
         build: .
+        gpus: all
         environment:
             PHOTOLUT_CONCURRENCY: "${PHOTOLUT_CONCURRENCY:-1}"
         ports:
