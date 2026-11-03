@@ -48,9 +48,13 @@ def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
         ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
         "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=2:duration=1",
         "-f", "lavfi", "-i", "sine=frequency=1000:sample_rate=48000:duration=1",
-        "-shortest", "-c:v", "libx265", "-preset", "ultrafast",
+        "-shortest",
+        "-vf",
+        "zscale=matrixin=bt709:transferin=bt709:primariesin=bt709:"
+        "matrix=bt2020nc:transfer=arib-std-b67:primaries=bt2020,"
+        "format=yuv420p10le",
+        "-c:v", "libx265", "-preset", "ultrafast",
         "-x265-params", "log-level=error",
-        "-pix_fmt", "yuv420p10le",
         "-color_primaries", "bt2020", "-color_trc", "arib-std-b67",
         "-colorspace", "bt2020nc", "-c:a", "aac", str(source),
     ])
