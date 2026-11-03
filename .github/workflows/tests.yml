@@ -84,8 +84,8 @@ jobs:
           grep -q '<title>PhotoLUT</title>' /tmp/photolut-index.html
           grep -q 'id="previewCompare"' /tmp/photolut-index.html
           grep -q 'id="videoCompareStage"' /tmp/photolut-index.html
-          grep -q 'id="videoCompareWipe"' /tmp/photolut-index.html
-          grep -q 'id="videoCompareSeek"' /tmp/photolut-index.html
+          grep -q 'id="videoCompareSeconds"' /tmp/photolut-index.html
+          ! grep -q 'id="preserveHdrBtn"' /tmp/photolut-index.html
           grep -q 'id="intensity"' /tmp/photolut-index.html
           grep -q 'id="downloadPicker"' /tmp/photolut-index.html
           grep -q 'family=Inter:wght@100..900' /tmp/photolut-index.html
