@@ -135,7 +135,7 @@ button,input,select,textarea{letter-spacing:inherit}
     <div class="panel-body video-inspect-body">
       <div>
         <b class="video-inspect-heading">Inspect a Pixel or other HDR video</b>
-        <p class="hint">Inspect HLG, HDR10/PQ, Dolby Vision side data, resolution, frame rate, and bit depth. Confirmed HLG/PQ sources can be remuxed to MP4 without re-encoding. The separate LUT export converts supported HLG footage to SDR BT.709.</p>
+        <p class="hint">Inspect HDR format, resolution, frame rate, bit depth, and color metadata. The LUT export currently grades confirmed HLG/BT.2020 footage and keeps the result HDR HLG/BT.2020 at 10-bit.</p>
         <label class="drop video-inspect-drop" for="videoInspectInput" id="videoInspectDrop">
           <span class="drop-icon">▶</span><b id="videoInspectName">Choose an original video</b><span>MP4 · MOV · M4V · MKV</span><span class="browse">Browse video</span>
         </label>
@@ -146,7 +146,7 @@ button,input,select,textarea{letter-spacing:inherit}
         <input type="file" id="videoLutInput" accept=".cube">
         <div class="range-head"><label for="videoLutIntensity">Video LUT intensity</label><strong id="videoLutIntensityValue">100%</strong></div>
         <input type="range" id="videoLutIntensity" min="0" max="100" value="100">
-        <p class="hint">HDR preservation copies confirmed HLG/PQ video frames and available HDR metadata unchanged. It does not apply a LUT or enhance image quality. Separate LUT export below remains SDR BT.709. Dolby Vision LUT re-encoding is disabled because the dynamic metadata cannot be preserved; use the original HDR preservation option.</p>
+        <p class="hint">The graded export remains HDR: HLG transfer, BT.2020 color, and 10-bit HEVC. Dolby Vision sources are not accepted for LUT re-encoding because their dynamic metadata cannot currently be preserved. HDR10/PQ inputs are inspected but LUT export is limited to HLG in this release.</p>
         <button class="primary" id="preserveHdrBtn" type="button" disabled>Preserve original HDR · MP4</button>
         <div class="progress-status" id="preserveHdrStatus" role="status" aria-live="polite"></div>
         <button class="primary" id="processVideoBtn" type="button" disabled>Apply LUT & export 10-bit video</button>
@@ -363,7 +363,7 @@ videoLutIntensity.addEventListener("input",()=>{$("videoLutIntensityValue").text
 processVideoBtn.addEventListener("click",async()=>{
   const source=videoInspectInput.files?.[0],lut=videoLutInput.files?.[0];if(!source||!lut)return;
   if(!lut.name.toLowerCase().endsWith(".cube")){$("videoProcessStatus").textContent="Choose a valid .cube LUT.";return;}
-  processVideoBtn.disabled=true;$("videoProcessStatus").textContent="Processing HLG video and preparing 10-bit MP4…";
+  processVideoBtn.disabled=true;$("videoProcessStatus").textContent="Applying HDR HLG LUT and encoding 10-bit HEVC…";
   try{
     const form=new FormData();form.append("video_file",source);form.append("cube",lut);form.append("intensity",String(Number(videoLutIntensity.value)/100));
     const response=await fetch("/api/video/process",{method:"POST",body:form});
@@ -371,10 +371,10 @@ processVideoBtn.addEventListener("click",async()=>{
     const blob=await response.blob();
     clearProcessedVideoPreview();
     processedVideoUrl=URL.createObjectURL(blob);
-    processedVideoName=source.name.replace(/\.[^.]+$/,"")+"_photolut_sdr_10bit.mp4";
+    processedVideoName=source.name.replace(/\.[^.]+$/,"")+"_photolut_hdr_hlg_10bit.mp4";
     processedVideoPreview.src=processedVideoUrl;
     $("videoPreviewPanel").hidden=false;
-    $("videoProcessStatus").textContent="Export complete. Preview the SDR BT.709 HEVC 10-bit MP4 below; download only when ready.";
+    $("videoProcessStatus").textContent="HDR export complete. The verified HLG/BT.2020 HEVC 10-bit result is ready below; download when ready.";
   }catch(error){$("videoProcessStatus").textContent=error.message||String(error);}
   finally{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoLutInput.files?.length&&videoHlgConfirmed&&!videoDolbyVisionDetected);}
 });
