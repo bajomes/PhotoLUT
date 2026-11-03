@@ -74,6 +74,20 @@ def normalize_probe_data(payload: dict[str, Any]) -> dict[str, Any]:
                          if "dovi" in str(item.get("side_data_type", "")).lower()
                          or "dolby vision" in str(item.get("side_data_type", "")).lower()), None)
     dv_profile = (dolby_vision or {}).get("dv_profile")
+    hdr_side_data = []
+    for item in side_data:
+        side_type = str(item.get("side_data_type") or "").lower()
+        if any(token in side_type for token in ("mastering display", "content light", "dovi", "dolby vision")):
+            hdr_side_data.append({
+                key: item[key] for key in (
+                    "side_data_type", "red_x", "red_y", "green_x", "green_y",
+                    "blue_x", "blue_y", "white_point_x", "white_point_y",
+                    "min_luminance", "max_luminance", "max_content", "max_average",
+                    "dv_profile", "dv_level", "rpu_present", "el_present",
+                    "bl_present", "dv_bl_signal_compatibility_id",
+                ) if key in item
+            })
+    hdr_side_data.sort(key=lambda item: str(item.get("side_data_type", "")))
     try:
         fps_num, fps_den = str(stream.get("avg_frame_rate") or stream.get("r_frame_rate") or "0/1").split("/", 1)
         fps = float(fps_num) / float(fps_den) if float(fps_den) else None
@@ -121,6 +135,7 @@ def normalize_probe_data(payload: dict[str, Any]) -> dict[str, Any]:
         "hlg_metadata_complete": hlg_metadata_complete,
         "dolby_vision_detected": dolby_vision is not None,
         "dolby_vision_profile": dv_profile,
+        "hdr_side_data": hdr_side_data,
         "frame_rate_numeric": round(fps, 3) if fps is not None else None,
         "is_4k30_or_higher": is_4k30,
         "recommended_path": ("preserve_hdr" if hdr_metadata_complete else "inspect_color_metadata" if is_hdr else "sdr_to_hdr_optional" if transfer == "bt709" else "manual_color_confirmation"),
@@ -273,7 +288,7 @@ def preserve_hdr_video(source: Path, output: Path) -> dict[str, Any]:
     output_metadata = inspect_video(output)
     if not output_metadata.get("hdr_metadata_complete"):
         raise RuntimeError("HDR metadata verification failed after MP4 remux; the output was rejected.")
-    for key in ("color_transfer", "color_primaries", "color_matrix", "bit_depth"):
+    for key in ("color_transfer", "color_primaries", "color_matrix", "bit_depth", "hdr_side_data"):
         if output_metadata.get(key) != source_metadata.get(key):
             raise RuntimeError(f"HDR verification mismatch for {key}; the output was rejected.")
     return output_metadata
