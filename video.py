@@ -1,18 +1,16 @@
-"""Video metadata inspection for the HLG HDR workflow.
-
-This module deliberately inspects source metadata only. It does not decode,
-grade, tone-map, or re-encode video; those operations belong to later stages
-with explicit color-management tests.
-"""
+"""Video metadata inspection and HLG HDR LUT processing."""
 from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -138,7 +136,7 @@ def normalize_probe_data(payload: dict[str, Any]) -> dict[str, Any]:
         "hdr_side_data": hdr_side_data,
         "frame_rate_numeric": round(fps, 3) if fps is not None else None,
         "is_4k30_or_higher": is_4k30,
-        "recommended_path": ("preserve_hdr" if hdr_metadata_complete else "inspect_color_metadata" if is_hdr else "sdr_input" if transfer == "bt709" else "manual_color_confirmation"),
+        "recommended_path": ("apply_hlg_lut" if hlg_metadata_complete else "inspect_color_metadata" if is_hdr else "sdr_input" if transfer == "bt709" else "manual_color_confirmation"),
         "warnings": warnings,
     }
 
@@ -212,23 +210,103 @@ VIDEO_PROCESS_TIMEOUT_SECONDS = 20 * 60
 
 
 def _ffmpeg_filter(lut_path: Path, intensity: float) -> str:
-    """Apply an HLG/BT.2020-domain LUT and encode back to HLG/BT.2020."""
+    """CPU fallback: apply the HLG LUT and blend its strength in linear light."""
     lut = str(lut_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
     amount = format(intensity, ".6f")
     return (
         "[0:v]zscale=matrixin=bt2020nc:transferin=arib-std-b67:primariesin=bt2020:"
         "matrix=gbr:transfer=arib-std-b67:primaries=bt2020:range=full,"
-        "format=gbrpf32le,split=2[base][forlut];"
-        f"[forlut]lut3d=file='{lut}':interp=tetrahedral[graded];"
-        f"[base][graded]blend=all_expr='A*(1-{amount})+B*{amount}',"
+        "format=gbrpf32le,split=2[base_hlg][forlut];"
+        f"[forlut]lut3d=file='{lut}':interp=tetrahedral[graded_hlg];"
+        "[base_hlg]zscale=matrixin=gbr:transferin=arib-std-b67:primariesin=bt2020:"
+        "rangein=full:matrix=gbr:transfer=linear:primaries=bt2020:range=full[base_linear];"
+        "[graded_hlg]zscale=matrixin=gbr:transferin=arib-std-b67:primariesin=bt2020:"
+        "rangein=full:matrix=gbr:transfer=linear:primaries=bt2020:range=full[graded_linear];"
+        f"[base_linear][graded_linear]blend=all_expr='A*(1-{amount})+B*{amount}'[mixed_linear];"
+        "[mixed_linear]zscale=matrixin=gbr:transferin=linear:primariesin=bt2020:"
+        "rangein=full:matrix=gbr:transfer=arib-std-b67:primaries=bt2020:range=full,"
         "zscale=matrixin=gbr:transferin=arib-std-b67:primariesin=bt2020:rangein=full:"
         "matrix=bt2020nc:transfer=arib-std-b67:primaries=bt2020:range=limited,"
         "format=yuv420p10le[outv]"
     )
 
 
-def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: float) -> None:
-    """Apply an HLG/BT.2020 .cube LUT and export verified 10-bit HLG HEVC."""
+def _hlg_to_linear(signal: np.ndarray) -> np.ndarray:
+    """Inverse HLG OETF for normalized HLG signal values."""
+    value = np.clip(np.asarray(signal, dtype=np.float32), 0.0, 1.0)
+    a = 0.17883277
+    b = 1.0 - 4.0 * a
+    c = 0.5 - a * np.log(4.0 * a)
+    return np.where(value <= 0.5, value * value / 3.0,
+                    (np.exp((value - c) / a) + b) / 12.0).astype(np.float32)
+
+
+def _linear_to_hlg(linear: np.ndarray) -> np.ndarray:
+    """HLG OETF for normalized scene-linear RGB values."""
+    value = np.clip(np.asarray(linear, dtype=np.float32), 0.0, 1.0)
+    a = 0.17883277
+    b = 1.0 - 4.0 * a
+    c = 0.5 - a * np.log(4.0 * a)
+    return np.where(value <= (1.0 / 12.0), np.sqrt(3.0 * value),
+                    a * np.log(np.maximum(12.0 * value - b, 1e-8)) + c).astype(np.float32)
+
+
+def _write_intensity_lut(lut: core.CubeLUT, intensity: float, output: Path) -> None:
+    """Bake linear-light LUT strength into a .cube so the GPU does one lookup."""
+    if not 0.0 <= intensity <= 1.0:
+        raise ValueError("intensity must be between 0.0 and 1.0")
+    red = np.linspace(lut.domain_min[0], lut.domain_max[0], lut.size, dtype=np.float32)
+    green = np.linspace(lut.domain_min[1], lut.domain_max[1], lut.size, dtype=np.float32)
+    blue = np.linspace(lut.domain_min[2], lut.domain_max[2], lut.size, dtype=np.float32)
+    b_grid, g_grid, r_grid = np.meshgrid(blue, green, red, indexing="ij")
+    identity = np.stack((r_grid, g_grid, b_grid), axis=-1)
+    original_linear = _hlg_to_linear(identity)
+    graded_linear = _hlg_to_linear(lut.table)
+    mixed = original_linear * (1.0 - intensity) + graded_linear * intensity
+    mixed_hlg = _linear_to_hlg(mixed)
+
+    with output.open("w", encoding="ascii", newline="\n") as stream:
+        stream.write('TITLE "PhotoLUT GPU intensity-baked HLG LUT"\n')
+        stream.write(f"LUT_3D_SIZE {lut.size}\n")
+        stream.write("DOMAIN_MIN " + " ".join(f"{v:.8f}" for v in lut.domain_min) + "\n")
+        stream.write("DOMAIN_MAX " + " ".join(f"{v:.8f}" for v in lut.domain_max) + "\n")
+        for rgb in mixed_hlg.reshape(-1, 3):
+            stream.write(" ".join(f"{float(v):.8f}" for v in rgb) + "\n")
+
+
+def _gpu_ffmpeg_filter(lut_path: Path) -> str:
+    """Upload decoded 10-bit frames to Vulkan and run the .cube LUT on GPU."""
+    lut = str(lut_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    return (
+        "[0:v]format=yuv420p10le,hwupload,"
+        f"libplacebo=lut='{lut}':lut_type=native:format=yuv420p10le:"
+        "colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67:"
+        "range=tv:peak_detect=false,"
+        "hwdownload,format=yuv420p10le,format=p010le[outv]"
+    )
+
+
+def _supports_gpu_lut(ffmpeg: str) -> bool:
+    """Return true only when this FFmpeg exposes libplacebo's custom .cube option."""
+    try:
+        filters = subprocess.run(
+            [ffmpeg, "-hide_banner", "-filters"], check=True,
+            capture_output=True, text=True, timeout=15,
+        )
+        if not re.search(r"\blibplacebo\b", filters.stdout + filters.stderr):
+            return False
+        help_result = subprocess.run(
+            [ffmpeg, "-hide_banner", "-h", "filter=libplacebo"],
+            check=False, capture_output=True, text=True, timeout=15,
+        )
+        help_text = help_result.stdout + help_result.stderr
+        return bool(re.search(r"^\s*lut\s+<", help_text, re.MULTILINE))
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: float) -> str:
+    """Grade HLG HDR with a Vulkan GPU LUT when available; verify 10-bit HLG output."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("FFmpeg is not installed.")
@@ -239,35 +317,75 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         )
     if metadata.get("dolby_vision_detected"):
         raise ValueError(
-            "LUT export is disabled for Dolby Vision sources because re-encoding would discard Dolby Vision dynamic metadata. "
-            "Use HDR preservation to keep the original stream unchanged."
+            "LUT export is disabled for Dolby Vision sources because re-encoding would discard Dolby Vision dynamic metadata."
         )
-    # Parse once before invoking FFmpeg so malformed LUTs fail with a clear API error.
-    core.parse_cube(lut_path)
-    command = [
-        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-        "-i", str(source), "-filter_complex", _ffmpeg_filter(lut_path, intensity),
-        "-map", "[outv]", "-map", "0:a?", "-c:v", "libx265",
-        "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p10le",
+    parsed_lut = core.parse_cube(lut_path)
+    if not 0.0 <= intensity <= 1.0:
+        raise ValueError("intensity must be between 0.0 and 1.0")
+
+    baked_lut = output.with_name("photolut-intensity-hlg.cube")
+    _write_intensity_lut(parsed_lut, intensity, baked_lut)
+
+    output_metadata_args = [
         "-tag:v", "hvc1", "-color_range", "tv",
         "-color_primaries", "bt2020", "-color_trc", "arib-std-b67",
         "-colorspace", "bt2020nc",
-        "-x265-params", "repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
     ]
+    encoder_options = [
+        [
+            "-c:v", "hevc_nvenc", "-preset", "p5", "-tune", "hq",
+            "-profile:v", "main10", "-pix_fmt", "p010le",
+            "-rc", "vbr", "-cq", "19", "-b:v", "0",
+            "-spatial_aq", "1", "-temporal_aq", "1",
+        ],
+        [
+            "-c:v", "libx265", "-preset", "medium", "-crf", "18",
+            "-pix_fmt", "yuv420p10le",
+            "-x265-params",
+            "repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
+        ],
+    ]
+
+    processing_paths: list[tuple[str, str, bool]] = []
+    if _supports_gpu_lut(ffmpeg):
+        processing_paths.append(("GPU (Vulkan/libplacebo 3D LUT)", _gpu_ffmpeg_filter(baked_lut), True))
+    processing_paths.append(("CPU fallback (zscale/lut3d)", _ffmpeg_filter(lut_path, intensity), False))
+
+    last_error: subprocess.CalledProcessError | None = None
+    selected_backend: str | None = None
     try:
-        try:
-            subprocess.run(command, check=True, capture_output=True, text=True,
-                           timeout=VIDEO_PROCESS_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("Video processing exceeded the 20-minute time limit.") from exc
-        except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or "").strip()
-            raise ValueError(detail[-1000:] or "FFmpeg could not process this video.") from exc
+        for backend, filter_graph, use_vulkan in processing_paths:
+            common_command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y"]
+            if use_vulkan:
+                common_command += ["-init_hw_device", "vulkan=vk:0", "-filter_hw_device", "vk"]
+            common_command += [
+                "-i", str(source), "-filter_complex", filter_graph,
+                "-map", "[outv]", "-map", "0:a?",
+            ]
+            for options in encoder_options:
+                command = common_command + options + output_metadata_args
+                try:
+                    subprocess.run(
+                        command, check=True, capture_output=True, text=True,
+                        timeout=VIDEO_PROCESS_TIMEOUT_SECONDS,
+                    )
+                    selected_backend = backend
+                    break
+                except subprocess.TimeoutExpired as exc:
+                    raise RuntimeError("Video processing exceeded the 20-minute time limit.") from exc
+                except subprocess.CalledProcessError as exc:
+                    output.unlink(missing_ok=True)
+                    last_error = exc
+            if selected_backend:
+                break
+
+        if selected_backend is None:
+            detail = (last_error.stderr or "").strip() if last_error else ""
+            raise ValueError(detail[-1000:] or "FFmpeg could not process this video.")
         if not output.is_file() or output.stat().st_size == 0:
             raise RuntimeError("FFmpeg did not produce a valid output file.")
 
-        # Verify the encoded stream, not just the encoder arguments.
         output_metadata = inspect_video(output)
         expected = {
             "codec": "hevc",
@@ -287,97 +405,14 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
             raise RuntimeError(
                 "Export verification failed; output was rejected. " + "; ".join(mismatches)
             )
+        return selected_backend
     except BaseException:
-        # Do not leave partial, unverified, or failed exports in the temp directory.
         output.unlink(missing_ok=True)
-        raise
-
-
-
-
-def preserve_hdr_video(source: Path, output: Path) -> dict[str, Any]:
-    """Remux confirmed HDR video without re-encoding, preserving original HDR pixels."""
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        raise RuntimeError("FFmpeg is not installed.")
-    source_metadata = inspect_video(source)
-    if not source_metadata.get("hdr_metadata_complete"):
-        raise ValueError("HDR preservation requires confirmed HLG or PQ, BT.2020, and at least 10-bit input.")
-    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
-               "-map", "0:v:0", "-map", "0:a?", "-map_metadata", "0", "-c", "copy",
-               "-movflags", "+faststart"]
-    if source_metadata.get("codec") == "hevc":
-        command += ["-tag:v", "hvc1"]
-    command.append(str(output))
-    try:
-        try:
-            subprocess.run(command, check=True, capture_output=True, text=True,
-                           timeout=VIDEO_PROCESS_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("HDR remux exceeded the 20-minute time limit.") from exc
-        except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or "").strip()
-            raise ValueError(detail[-1000:] or "FFmpeg could not preserve this HDR video in MP4.") from exc
-        if not output.is_file() or output.stat().st_size == 0:
-            raise RuntimeError("FFmpeg did not produce a valid HDR MP4.")
-
-        output_metadata = inspect_video(output)
-        if not output_metadata.get("hdr_metadata_complete"):
-            raise RuntimeError("HDR metadata verification failed after MP4 remux; the output was rejected.")
-        for key in ("color_transfer", "color_primaries", "color_matrix", "bit_depth", "hdr_side_data"):
-            if output_metadata.get(key) != source_metadata.get(key):
-                raise RuntimeError(f"HDR verification mismatch for {key}; the output was rejected.")
-        return output_metadata
-    except BaseException:
-        # A failed FFmpeg run or failed verification must never leave a deliverable-looking file.
-        output.unlink(missing_ok=True)
-        raise
-
-
-@router.post("/preserve-hdr")
-async def preserve_uploaded_hdr_video(video_file: UploadFile = File(...)) -> FileResponse:
-    """Create an MP4 container copy of a confirmed HDR source without altering video frames."""
-    filename = Path((video_file.filename or "video").replace(chr(92), "/")).name
-    extension = Path(filename).suffix.lower()
-    if extension not in SUPPORTED_VIDEO_EXTENSIONS:
-        raise HTTPException(400, "Supported video formats: MP4, MOV, M4V, and MKV.")
-    if not VIDEO_PROCESSING_SLOT.acquire(blocking=False):
-        raise HTTPException(429, "The video processor is busy. Please retry when the current export finishes.")
-    try:
-        temp_dir = Path(tempfile.mkdtemp(prefix="photolut-hdr-preserve-"))
-    except Exception:
-        VIDEO_PROCESSING_SLOT.release()
-        raise
-    source = temp_dir / f"input{extension}"
-    output = temp_dir / "photolut_hdr_preserved.mp4"
-    try:
-        size = 0
-        with source.open("wb") as stream:
-            while chunk := await video_file.read(1024 * 1024):
-                size += len(chunk)
-                if size > MAX_VIDEO_BYTES:
-                    raise HTTPException(413, "Video exceeds the 512 MiB processing limit.")
-                stream.write(chunk)
-        if size == 0:
-            raise HTTPException(400, "The uploaded video is empty.")
-        try:
-            metadata = await asyncio.to_thread(preserve_hdr_video, source, output)
-        except ValueError as exc:
-            raise HTTPException(422, str(exc)) from exc
-        except RuntimeError as exc:
-            raise HTTPException(503, str(exc)) from exc
-        from starlette.background import BackgroundTask
-        return FileResponse(output, media_type="video/mp4",
-                            filename=f"{Path(filename).stem}_photolut_hdr_preserved.mp4",
-                            background=BackgroundTask(shutil.rmtree, temp_dir, ignore_errors=True),
-                            headers={"X-PhotoLUT-HDR-Verified": "true",
-                                     "X-PhotoLUT-HDR-Transfer": str(metadata["color_transfer"])})
-    except BaseException:
-        shutil.rmtree(temp_dir, ignore_errors=True)
         raise
     finally:
-        VIDEO_PROCESSING_SLOT.release()
-        await video_file.close()
+        baked_lut.unlink(missing_ok=True)
+
+
 
 @router.post("/process")
 async def process_uploaded_video(
@@ -426,7 +461,7 @@ async def process_uploaded_video(
         if lut_size == 0:
             raise HTTPException(400, "The uploaded LUT is empty.")
         try:
-            await asyncio.to_thread(transcode_hlg_video, source, lut_path, output, intensity)
+            processing_device = await asyncio.to_thread(transcode_hlg_video, source, lut_path, output, intensity)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         except RuntimeError as exc:
@@ -437,7 +472,8 @@ async def process_uploaded_video(
             output, media_type="video/mp4",
             filename=f"{Path(filename).stem}_photolut_hdr_hlg_10bit.mp4",
             background=background_tasks,
-            headers={"X-PhotoLUT-HDR-Verified": "true", "X-PhotoLUT-HDR-Transfer": "arib-std-b67"},
+            headers={"X-PhotoLUT-HDR-Verified": "true", "X-PhotoLUT-HDR-Transfer": "arib-std-b67",
+                     "X-PhotoLUT-Processing-Device": processing_device},
         )
     except BaseException:
         shutil.rmtree(temp_dir, ignore_errors=True)

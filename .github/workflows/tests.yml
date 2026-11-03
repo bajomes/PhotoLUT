@@ -82,16 +82,19 @@ jobs:
           fi
 
           grep -q '<title>PhotoLUT</title>' /tmp/photolut-index.html
+          docker exec photolut-ci ffmpeg -hide_banner -filters 2>&1 | grep libplacebo >/dev/null
+          docker exec photolut-ci ffmpeg -hide_banner -h filter=libplacebo 2>&1 | grep 'lut ' >/dev/null
           grep -q 'id="previewCompare"' /tmp/photolut-index.html
           grep -q 'id="videoCompareStage"' /tmp/photolut-index.html
-          grep -q 'id="videoCompareWipe"' /tmp/photolut-index.html
           grep -q 'id="videoCompareSeek"' /tmp/photolut-index.html
+          ! grep -q 'id="videoCompareSeconds"' /tmp/photolut-index.html
+          ! grep -q 'id="preserveHdrBtn"' /tmp/photolut-index.html
           grep -q 'id="intensity"' /tmp/photolut-index.html
           grep -q 'id="downloadPicker"' /tmp/photolut-index.html
           grep -q 'family=Inter:wght@100..900' /tmp/photolut-index.html
           grep -q 'Process batch' /tmp/photolut-index.html
-          curl --fail --silent http://127.0.0.1:8000/luts/photolut-natural-hlg-bt2020.cube --output /tmp/photolut-natural-hlg-bt2020.cube
-          grep -q 'LUT_3D_SIZE 33' /tmp/photolut-natural-hlg-bt2020.cube
+          curl --fail --silent http://127.0.0.1:8000/luts/photolut-neutral-hlg-bt2020.cube --output /tmp/photolut-neutral-hlg-bt2020.cube
+          grep -q 'LUT_3D_SIZE 17' /tmp/photolut-neutral-hlg-bt2020.cube
           python - <<'PY'
           from html.parser import HTMLParser
           from pathlib import Path

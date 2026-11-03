@@ -4,17 +4,18 @@ PhotoLUT applies a 3D `.cube` creative LUT to RAW photographs and exports ready-
 
 ## Quick start
 
-Install Docker Desktop or Docker Engine with the Compose plugin. Check out the HDR-only video LUT branch, then build and start PhotoLUT:
+Install Docker Desktop or Docker Engine with the Compose plugin. Check out the current project branch, then build and start PhotoLUT:
 
 ```bash
-git fetch origin feat/hdr-only-video-lut
-git switch --track origin/feat/hdr-only-video-lut
+git fetch origin
+git switch main
+git pull --ff-only
 docker compose up --build -d
 ```
 
 Open http://127.0.0.1:8000 in a browser. The Compose port is bound to localhost by default. Job uploads and results stay in the container's temporary `/tmp/photolut-jobs` directory and are cleaned automatically after 30 minutes; Compose no longer creates a persistent `./jobs` mount on the host.
 
-In the Video panel, choose an HLG source and inspect its metadata. The built-in Natural HLG LUT is applied by default; an optional custom HLG-domain `.cube` LUT can replace it. The video LUT export accepts confirmed HLG/BT.2020/10-bit sources only and verifies the encoded HDR result before returning it. After export, a synchronized before/after comparison lets you wipe between the original clip and the graded HDR result while previewing playback. Custom Rec.709 LUTs are not directly compatible with the current HLG-domain grading path. To stop the app:
+In the Video panel, choose an HLG source and inspect its metadata. The built-in Neutral HLG LUT is an identity transform; it preserves source colors without adding a creative tint. An optional custom HLG-domain `.cube` LUT can replace it. The video LUT export accepts confirmed HLG/BT.2020/10-bit sources only and verifies the encoded HDR result before returning it. After export, a synchronized before/after comparison lets you wipe between the original clip and the graded HDR result while previewing playback. The wipe is controlled directly inside the preview; playback includes a draggable seek timeline, 10-second skip controls, playback-speed selection, and fullscreen. Custom Rec.709 LUTs are not directly compatible with the current HLG-domain grading path. To stop the app:
 
 ```bash
 docker compose down
@@ -34,8 +35,8 @@ docker compose down
 - Upload MP4, MOV, M4V, or MKV files up to 512 MiB to `POST /api/video/inspect`.
 - FFprobe reports codec, dimensions, pixel format, estimated bit depth, frame rate, duration, color primaries, matrix, transfer function, range, and available Dolby Vision side-data/profile information.
 - HLG (`arib-std-b67`) and PQ/HDR10 (`smpte2084`) are classified separately. The API reports whether BT.2020 primaries/matrix and at least 10-bit depth are confirmed, plus whether the source is at least 3840×2160 at approximately 30 fps. Inspection never upscales or changes frame rate.
-- `POST /api/video/preserve-hdr` remuxes confirmed HLG/PQ + BT.2020 + 10-bit sources into MP4 with stream copy (no video re-encode), then re-probes the result and rejects it if HDR transfer, primaries, matrix, bit depth, or available HDR mastering/content-light/Dolby Vision side data changed. This preserves original image data; it does not apply a LUT or improve image quality.
-- The `POST /api/video/process` workflow accepts confirmed HLG/BT.2020/10-bit footage and an HLG-domain `.cube` LUT, with adjustable intensity. The filter converts the BT.2020 YUV signal to HLG-encoded BT.2020 RGB, applies the LUT without tone mapping or conversion to BT.709, then converts back to limited-range BT.2020 HLG YUV. Output is encoded as HEVC Main 10 (`yuv420p10le`) with HLG/BT.2020 VUI tags and is re-probed before delivery; the API rejects any result that does not verify as 10-bit HLG/BT.2020. Dolby Vision sources are rejected because re-encoding would discard dynamic metadata. HDR10/PQ is inspected and can be preserved by stream-copy, but LUT grading in this release is HLG-only. The included Natural HLG LUT is an original PhotoLUT look authored for HLG-encoded BT.2020 RGB; it is not an SDR LUT and must not be used on Rec.709 or camera-Log footage. Processing is limited to one video at a time, 512 MiB input, 10 MiB LUT, and a 20-minute FFmpeg timeout. Do not interpret a missing color tag as proof that footage is SDR.
+- Video LUT processing now prefers FFmpeg `libplacebo` on Vulkan: decoded 10-bit frames are uploaded to the selected Vulkan device, the 3D `.cube` LUT is applied on the GPU, and the graded frames are downloaded for encoding. LUT intensity is baked into a temporary `.cube` using the HLG inverse/forward OETF so the GPU performs a single LUT lookup per pixel while preserving linear-light intensity blending. Encoding separately prefers NVIDIA NVENC HEVC Main 10 (`hevc_nvenc`, preset P5, VBR constant-quality mode) and falls back to `libx265` when NVENC is unavailable. If the Vulkan device or custom-LUT filter is unavailable, the app falls back to the CPU `zscale`/`lut3d` path and reports `CPU fallback` in the export response and UI; it never labels that path as GPU processing. GPU LUT acceleration requires FFmpeg with `libplacebo` custom `.cube` support, Vulkan 1.2, a compatible NVIDIA GPU/driver, NVIDIA Container Toolkit, and Docker GPU passthrough. The Docker image installs FFmpeg with the required `libplacebo` support.
+- The `POST /api/video/process` workflow accepts confirmed HLG/BT.2020/10-bit footage and an HLG-domain `.cube` LUT, with adjustable intensity. The filter converts the BT.2020 YUV signal to HLG-encoded BT.2020 RGB, applies the LUT in its authored HLG signal domain, converts both the original and graded branches to linear-light RGB for intensity blending, then re-encodes HLG and converts back to limited-range BT.2020 HLG YUV. Linear-light blending avoids mixing nonlinear HLG code values directly. Output is encoded as HEVC Main 10 (`yuv420p10le`) with HLG/BT.2020 VUI tags and is re-probed before delivery; the API rejects any result that does not verify as 10-bit HLG/BT.2020. Dolby Vision sources are rejected because re-encoding would discard dynamic metadata. HDR10/PQ is inspected, but LUT grading in this release is HLG-only. The included Neutral HLG LUT is an identity transform for HLG-encoded BT.2020 RGB. It does not add a creative look or change the source color values; use a compatible HLG/BT.2020 LUT for creative grading. It is not an SDR LUT and must not be used on Rec.709 or camera-Log footage. Processing is limited to one video at a time, 512 MiB input, 10 MiB LUT, and a 20-minute FFmpeg timeout. Do not interpret a missing color tag as proof that footage is SDR.
 
 ## TikTok delivery considerations
 
@@ -45,7 +46,7 @@ PhotoLUT's HLG LUT export produces an HEVC Main 10 HLG/BT.2020 master. TikTok's 
 
 ## Verification coverage
 
-GitHub Actions tests real RAW decoding and exports with two Nikon NEF samples and one Canon CR2 sample. The integration checks cover identity and creative LUTs, 16-bit TIFF pixels, JPEG output, embedded sRGB profiles, orientation, and selected camera metadata. The CI suite does not verify every listed extension or every camera model; validate samples from each target camera before relying on it for production work. A synthetic HLG video integration test generates a short 10-bit BT.2020/HLG clip, runs the real FFmpeg LUT export, and verifies the resulting HEVC Main 10/HLG/BT.2020 metadata and AAC audio. The test suite also checks that the built-in HLG LUT is a valid 3D cube. A separate CI job builds the Docker image and smoke-tests the web UI and OpenAPI schema.
+GitHub Actions tests real RAW decoding and exports with two Nikon NEF samples and one Canon CR2 sample. The integration checks cover identity and creative LUTs, 16-bit TIFF pixels, JPEG output, embedded sRGB profiles, orientation, and selected camera metadata. The CI suite does not verify every listed extension or every camera model; validate samples from each target camera before relying on it for production work. A synthetic HLG video integration test converts a BT.709 test pattern into 10-bit BT.2020/HLG before encoding, runs the real FFmpeg LUT export, and verifies the resulting HEVC Main 10/HLG/BT.2020 metadata and AAC audio. The test suite also checks that the built-in HLG LUT is a valid 3D cube. A separate CI job builds the Docker image and smoke-tests the web UI and OpenAPI schema.
 
 When running `pytest -q` locally without sample files in `test-data/`, the real-RAW integration cases are skipped. Set `PHOTOLUT_TEST_RAW_DIR` to a directory containing the three fixture files to run them locally.
 

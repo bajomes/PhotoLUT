@@ -48,7 +48,7 @@ def test_normalize_identifies_pq_hdr10_and_4k30():
     assert result["hdr_format"] == "HDR10 / PQ"
     assert result["hdr_metadata_complete"] is True
     assert result["is_4k30_or_higher"] is True
-    assert result["recommended_path"] == "preserve_hdr"
+    assert result["recommended_path"] == "inspect_color_metadata"
 
 
 def test_normalize_does_not_call_sdr_hdr_or_force_upscale():
@@ -115,36 +115,11 @@ def test_video_filter_keeps_ten_bit_and_applies_intensity(tmp_path: Path):
     graph = video._ffmpeg_filter(lut, 0.35)
     assert "lut3d=" in graph
     assert "A*(1-0.350000)+B*0.350000" in graph
+    assert "[base_hlg]zscale=" in graph
+    assert "[graded_hlg]zscale=" in graph
+    assert "transfer=linear" in graph
+    assert "[mixed_linear]zscale=" in graph
     assert "format=yuv420p10le[outv]" in graph
-
-
-def test_preserve_hdr_rejects_unconfirmed_source(tmp_path: Path):
-    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
-    source.write_bytes(b"video")
-    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-        "video.inspect_video", return_value={"hdr_metadata_complete": False}
-    ), patch("video.subprocess.run") as run:
-        with pytest.raises(ValueError, match="requires confirmed"):
-            video.preserve_hdr_video(source, output)
-    run.assert_not_called()
-
-
-def test_preserve_hdr_stream_copies_and_verifies_metadata(tmp_path: Path):
-    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
-    source.write_bytes(b"video")
-    metadata = {"hdr_metadata_complete": True, "codec": "hevc", "color_transfer": "arib-std-b67",
-                "color_primaries": "bt2020", "color_matrix": "bt2020nc", "bit_depth": 10}
-    def fake_run(command, **kwargs):
-        Path(command[-1]).write_bytes(b"mp4")
-        assert "copy" in command
-        assert "-tag:v" in command and "hvc1" in command
-        return subprocess.CompletedProcess(command, 0, "", "")
-    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-        "video.inspect_video", side_effect=[metadata, metadata]
-    ), patch("video.subprocess.run", side_effect=fake_run):
-        result = video.preserve_hdr_video(source, output)
-    assert result["hdr_metadata_complete"] is True
-    assert output.read_bytes() == b"mp4"
 
 
 def test_transcode_rejects_dolby_vision_before_ffmpeg(tmp_path: Path):
@@ -190,10 +165,14 @@ def test_transcode_invokes_ffmpeg_as_ten_bit_hlg_bt2020(tmp_path: Path):
     }
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", side_effect=[source_metadata, output_metadata]
-    ), patch("video.core.parse_cube"), patch("video.subprocess.run", side_effect=fake_run) as run:
+    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run", side_effect=fake_run) as run:
         video.transcode_hlg_video(source, lut, output, 0.5)
     command = run.call_args.args[0]
-    assert "-pix_fmt" in command and command[command.index("-pix_fmt") + 1] == "yuv420p10le"
+    assert command[command.index("-c:v") + 1] == "hevc_nvenc"
+    assert command[command.index("-profile:v") + 1] == "main10"
+    assert command[command.index("-pix_fmt") + 1] == "p010le"
+    assert command[command.index("-preset") + 1] == "p5"
+    assert command[command.index("-cq") + 1] == "19"
     assert command[command.index("-color_trc") + 1] == "arib-std-b67"
     assert command[command.index("-color_primaries") + 1] == "bt2020"
     assert command[command.index("-colorspace") + 1] == "bt2020nc"
@@ -222,32 +201,6 @@ def test_normalize_preserves_hdr_mastering_and_dolby_vision_side_data():
     assert result["dolby_vision_profile"] == 8
 
 
-def test_preserve_hdr_rejects_changed_mastering_metadata(tmp_path: Path):
-    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
-    source.write_bytes(b"video")
-    source_metadata = {
-        "hdr_metadata_complete": True, "codec": "hevc",
-        "color_transfer": "smpte2084", "color_primaries": "bt2020",
-        "color_matrix": "bt2020nc", "bit_depth": 10,
-        "hdr_side_data": [{"side_data_type": "Content light level metadata",
-                           "max_content": 1000, "max_average": 400}],
-    }
-    output_metadata = {**source_metadata, "hdr_side_data": []}
-
-    def fake_run(command, **kwargs):
-        Path(command[-1]).write_bytes(b"mp4")
-        return subprocess.CompletedProcess(command, 0, "", "")
-
-    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-        "video.inspect_video", side_effect=[source_metadata, output_metadata]
-    ), patch("video.subprocess.run", side_effect=fake_run):
-        with pytest.raises(RuntimeError, match="hdr_side_data"):
-            video.preserve_hdr_video(source, output)
-
-    assert not output.exists()
-
-
-
 def test_transcode_rejects_unexpected_h264_output(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
@@ -267,42 +220,10 @@ def test_transcode_rejects_unexpected_h264_output(tmp_path: Path):
 
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", side_effect=[source_metadata, bad_output_metadata]
-    ), patch("video.core.parse_cube"), patch("video.subprocess.run", side_effect=fake_run):
+    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run", side_effect=fake_run):
         with pytest.raises(RuntimeError, match="codec: expected 'hevc', got 'h264'"):
             video.transcode_hlg_video(source, lut, output, 1.0)
 
-    assert not output.exists()
-
-
-def test_preserve_hdr_removes_partial_output_when_ffmpeg_fails(tmp_path: Path):
-    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
-    source.write_bytes(b"video")
-    metadata = {"hdr_metadata_complete": True, "codec": "hevc"}
-    def fake_run(command, **kwargs):
-        Path(command[-1]).write_bytes(b"partial")
-        raise subprocess.CalledProcessError(1, command, stderr="mux failed")
-    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-        "video.inspect_video", return_value=metadata
-    ), patch("video.subprocess.run", side_effect=fake_run):
-        with pytest.raises(ValueError, match="mux failed"):
-            video.preserve_hdr_video(source, output)
-    assert not output.exists()
-
-
-def test_preserve_hdr_removes_output_when_reprobe_fails(tmp_path: Path):
-    source, output = tmp_path / "in.mp4", tmp_path / "out.mp4"
-    source.write_bytes(b"video")
-    metadata = {"hdr_metadata_complete": True, "codec": "hevc", "color_transfer": "arib-std-b67",
-                "color_primaries": "bt2020", "color_matrix": "bt2020nc", "bit_depth": 10,
-                "hdr_side_data": []}
-    def fake_run(command, **kwargs):
-        Path(command[-1]).write_bytes(b"mp4")
-        return subprocess.CompletedProcess(command, 0, "", "")
-    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-        "video.inspect_video", side_effect=[metadata, RuntimeError("ffprobe failed")]
-    ), patch("video.subprocess.run", side_effect=fake_run):
-        with pytest.raises(RuntimeError, match="ffprobe failed"):
-            video.preserve_hdr_video(source, output)
     assert not output.exists()
 
 
@@ -312,7 +233,7 @@ def test_transcode_removes_partial_output_when_ffmpeg_fails(tmp_path: Path):
     lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", return_value={"hlg_metadata_complete": True}
-    ), patch("video.core.parse_cube"), patch("video.subprocess.run") as run:
+    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run") as run:
         def fake_run(command, **kwargs):
             Path(command[-1]).write_bytes(b"partial")
             raise subprocess.CalledProcessError(1, command, stderr="encode failed")
@@ -331,16 +252,16 @@ def test_transcode_removes_output_when_reprobe_fails(tmp_path: Path):
         return subprocess.CompletedProcess(command, 0, "", "")
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", side_effect=[{"hlg_metadata_complete": True}, RuntimeError("ffprobe failed")]
-    ), patch("video.core.parse_cube"), patch("video.subprocess.run", side_effect=fake_run):
+    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run", side_effect=fake_run):
         with pytest.raises(RuntimeError, match="ffprobe failed"):
             video.transcode_hlg_video(source, lut, output, 1.0)
     assert not output.exists()
 
 
-def test_builtin_natural_hlg_lut_is_valid_and_bounded():
-    lut = Path(__file__).resolve().parents[1] / "static" / "luts" / "photolut-natural-hlg-bt2020.cube"
+def test_builtin_neutral_hlg_lut_is_valid_and_bounded():
+    lut = Path(__file__).resolve().parents[1] / "static" / "luts" / "photolut-neutral-hlg-bt2020.cube"
     parsed = video.core.parse_cube(lut)
-    assert parsed.size == 33
+    assert parsed.size == 17
     assert parsed.table.min() >= 0.0
     assert parsed.table.max() <= 1.0
 
@@ -350,5 +271,94 @@ def test_hlg_filter_does_not_tone_map_to_sdr(tmp_path: Path):
     assert "tonemap=" not in graph
     assert "bt709" not in graph
     assert "transfer=arib-std-b67" in graph
+    assert "transfer=linear" in graph
     assert "primaries=bt2020" in graph
     assert "format=yuv420p10le[outv]" in graph
+
+
+
+def test_transcode_falls_back_to_x265_when_nvenc_is_unavailable(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
+
+    source_metadata = {"hlg_metadata_complete": True}
+    output_metadata = {
+        "codec": "hevc", "codec_profile": "Main 10",
+        "pixel_format": "yuv420p10le", "bit_depth": 10,
+        "color_transfer": "arib-std-b67", "color_primaries": "bt2020",
+        "color_matrix": "bt2020nc",
+    }
+
+    def fake_run(command, **kwargs):
+        if "hevc_nvenc" in command:
+            raise subprocess.CalledProcessError(1, command, stderr="Cannot load libcuda")
+        Path(command[-1]).write_bytes(b"cpu-mp4")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", side_effect=[source_metadata, output_metadata]
+    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run", side_effect=fake_run) as run:
+        video.transcode_hlg_video(source, lut, output, 0.5)
+
+    assert run.call_count == 2
+    cpu_command = run.call_args_list[1].args[0]
+    assert cpu_command[cpu_command.index("-c:v") + 1] == "libx265"
+    assert cpu_command[cpu_command.index("-pix_fmt") + 1] == "yuv420p10le"
+    assert output.read_bytes() == b"cpu-mp4"
+
+
+def test_gpu_filter_routes_lut_through_vulkan_libplacebo(tmp_path: Path):
+    graph = video._gpu_ffmpeg_filter(tmp_path / "look.cube")
+    assert "hwupload" in graph
+    assert "libplacebo=lut=" in graph
+    assert "lut_type=native" in graph
+    assert "hwdownload" in graph
+    assert "bt2020" in graph
+    assert "arib-std-b67" in graph
+
+
+def test_intensity_lut_bakes_hlg_linear_mix(tmp_path: Path):
+    source = tmp_path / "identity.cube"
+    source.write_text(
+        "LUT_3D_SIZE 2\n"
+        "0 0 0\n1 0 0\n0 1 0\n1 1 0\n"
+        "0 0 1\n1 0 1\n0 1 1\n1 1 1\n",
+        encoding="ascii",
+    )
+    parsed = video.core.parse_cube(source)
+    baked = tmp_path / "baked.cube"
+    video._write_intensity_lut(parsed, 0.4, baked)
+    result = video.core.parse_cube(baked)
+    assert result.size == 2
+    assert result.table == pytest.approx(parsed.table, abs=2e-6)
+
+
+def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8, encoding="ascii")
+    output_metadata = {
+        "codec": "hevc", "codec_profile": "Main 10",
+        "pixel_format": "yuv420p10le", "bit_depth": 10,
+        "color_transfer": "arib-std-b67", "color_primaries": "bt2020",
+        "color_matrix": "bt2020nc",
+    }
+
+    def fake_run(command, **kwargs):
+        assert "-init_hw_device" in command
+        assert "vulkan=vk:0" in command
+        graph = command[command.index("-filter_complex") + 1]
+        assert "libplacebo=lut=" in graph
+        Path(command[-1]).write_bytes(b"gpu-mp4")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", side_effect=[{"hlg_metadata_complete": True}, output_metadata]
+    ), patch("video._supports_gpu_lut", return_value=True), patch(
+        "video.subprocess.run", side_effect=fake_run
+    ):
+        backend = video.transcode_hlg_video(source, lut, output, 0.5)
+
+    assert backend == "GPU (Vulkan/libplacebo 3D LUT)"
+    assert output.read_bytes() == b"gpu-mp4"

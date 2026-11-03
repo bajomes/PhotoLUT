@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -48,9 +49,13 @@ def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
         ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
         "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=2:duration=1",
         "-f", "lavfi", "-i", "sine=frequency=1000:sample_rate=48000:duration=1",
-        "-shortest", "-c:v", "libx265", "-preset", "ultrafast",
+        "-shortest",
+        "-vf",
+        "zscale=matrixin=bt709:transferin=bt709:primariesin=bt709:rangein=limited:"
+        "matrix=bt2020nc:transfer=arib-std-b67:primaries=bt2020:range=limited,"
+        "format=yuv420p10le",
+        "-c:v", "libx265", "-preset", "ultrafast", "-crf", "12",
         "-x265-params", "log-level=error",
-        "-pix_fmt", "yuv420p10le",
         "-color_primaries", "bt2020", "-color_trc", "arib-std-b67",
         "-colorspace", "bt2020nc", "-c:a", "aac", str(source),
     ])
@@ -85,38 +90,16 @@ def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
     assert ("video", "hevc") in streams or ("hevc", "video") in streams
     assert ("audio", "aac") in streams or ("aac", "audio") in streams
 
-
-
-@pytest.mark.parametrize(
-    ("transfer", "expected_flag"),
-    [("arib-std-b67", "is_hlg"), ("smpte2084", "is_pq")],
-)
-def test_synthetic_hdr_remux_preserves_transfer_and_10bit(
-    tmp_path: Path, transfer: str, expected_flag: str
-):
-    """Exercise real FFmpeg HDR stream-copy remux and post-export verification."""
-    ffmpeg = shutil.which("ffmpeg")
-    assert ffmpeg
-    source = tmp_path / "synthetic_hdr_source.mp4"
-    output = tmp_path / "preserved_hdr.mp4"
-    _run([
-        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-        "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=2:duration=1",
-        "-c:v", "libx265", "-preset", "ultrafast",
-        "-x265-params", "log-level=error",
-        "-pix_fmt", "yuv420p10le",
-        "-color_primaries", "bt2020", "-color_trc", transfer,
-        "-colorspace", "bt2020nc", str(source),
-    ])
-    before = video.inspect_video(source)
-    assert before["hdr_metadata_complete"] is True
-    assert before[expected_flag] is True
-
-    after = video.preserve_hdr_video(source, output)
-    assert output.is_file() and output.stat().st_size > 0
-    assert after["hdr_metadata_complete"] is True
-    assert after["color_transfer"] == before["color_transfer"]
-    assert after["color_primaries"] == before["color_primaries"]
-    assert after["color_matrix"] == before["color_matrix"]
-    assert after["bit_depth"] == before["bit_depth"]
-    assert after["hdr_side_data"] == before["hdr_side_data"]
+    # The identity LUT must leave a correctly converted HLG signal visually
+    # close to the source after the decode/encode round trip.
+    comparison = subprocess.run(
+        [
+            ffmpeg, "-hide_banner", "-i", str(source), "-i", str(output),
+            "-filter_complex", "[0:v:0][1:v:0]psnr=shortest=1",
+            "-an", "-f", "null", "-",
+        ],
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+    match = re.search(r"average:([0-9.]+)", comparison.stderr)
+    assert match, comparison.stderr
+    assert float(match.group(1)) > 30.0, comparison.stderr
