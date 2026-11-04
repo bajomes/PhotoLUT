@@ -458,8 +458,22 @@ async def process_uploaded_video(
                 stream.write(chunk)
         if lut_size == 0:
             raise HTTPException(400, "The uploaded LUT is empty.")
+        processing_task = asyncio.create_task(
+            asyncio.to_thread(transcode_hlg_video, source, lut_path, output, intensity)
+        )
         try:
-            processing_device = await asyncio.to_thread(transcode_hlg_video, source, lut_path, output, intensity)
+            # Cancelling the request does not stop its FFmpeg worker thread.
+            # Keep the GPU slot and temporary media alive until transcoding
+            # actually exits, then let the outer cleanup run.
+            processing_device = await asyncio.shield(processing_task)
+        except asyncio.CancelledError:
+            try:
+                await processing_task
+            except Exception:
+                # Preserve request cancellation; do not mask it with a
+                # secondary transcode error after the client has disconnected.
+                pass
+            raise
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         except RuntimeError as exc:
