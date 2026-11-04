@@ -102,6 +102,21 @@ def test_blend_intensity_mixes_srgb_values_in_linear_light():
     np.testing.assert_allclose(result, 0.73535698, atol=1e-6)
 
 
+def test_blend_intensity_matches_linear_light_across_tile_boundary():
+    rng = np.random.default_rng(17)
+    original = rng.random((513, 7, 3), dtype=np.float32)
+    graded = rng.random((513, 7, 3), dtype=np.float32)
+    intensity = 0.37
+
+    result = core.blend_intensity(graded, original, intensity)
+    expected = core._linear_to_srgb(
+        core._srgb_to_linear(graded) * intensity
+        + core._srgb_to_linear(original) * (1.0 - intensity)
+    )
+
+    np.testing.assert_allclose(result, expected, atol=1e-6)
+
+
 def test_rejects_invalid_image_shape(tmp_path):
     lut = core.parse_cube(write_cube(tmp_path / "identity.cube"))
     with pytest.raises(ValueError, match="height, width, 3"):
