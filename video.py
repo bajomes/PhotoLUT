@@ -92,7 +92,7 @@ def normalize_probe_data(payload: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError, ZeroDivisionError):
         fps = None
     width, height = stream.get("width"), stream.get("height")
-    is_4k30 = bool(width and height and width >= 3840 and height >= 2160 and fps is not None and abs(fps - 30) <= 0.1)
+    is_4k30 = bool(width and height and max(width, height) >= 3840 and min(width, height) >= 2160 and fps is not None and abs(fps - 30) <= 0.1)
     hdr_format = ("Dolby Vision" if dolby_vision else
                   "HDR10 / PQ" if is_pq else "HLG" if is_hlg else
                   "SDR / BT.709" if transfer == "bt709" else "Unknown")
