@@ -165,7 +165,7 @@ def test_transcode_invokes_ffmpeg_as_ten_bit_hlg_bt2020(tmp_path: Path):
     }
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", side_effect=[source_metadata, output_metadata]
-    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run", side_effect=fake_run) as run:
+    ), patch("video._supports_gpu_lut", return_value=True), patch("video.subprocess.run", side_effect=fake_run) as run:
         video.transcode_hlg_video(source, lut, output, 0.5)
     command = run.call_args.args[0]
     assert command[command.index("-c:v") + 1] == "hevc_nvenc"
@@ -179,7 +179,7 @@ def test_transcode_invokes_ffmpeg_as_ten_bit_hlg_bt2020(tmp_path: Path):
     graph = command[command.index("-filter_complex") + 1]
     assert "tonemap=" not in graph
     assert "transfer=arib-std-b67" in graph
-    assert "lut3d=" in graph
+    assert "libplacebo=lut=" in graph
     assert output.read_bytes() == b"mp4"
 
 
@@ -220,7 +220,7 @@ def test_transcode_rejects_unexpected_h264_output(tmp_path: Path):
 
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", side_effect=[source_metadata, bad_output_metadata]
-    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run", side_effect=fake_run):
+    ), patch("video._supports_gpu_lut", return_value=True), patch("video.subprocess.run", side_effect=fake_run):
         with pytest.raises(RuntimeError, match="codec: expected 'hevc', got 'h264'"):
             video.transcode_hlg_video(source, lut, output, 1.0)
 
@@ -233,7 +233,7 @@ def test_transcode_removes_partial_output_when_ffmpeg_fails(tmp_path: Path):
     lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", return_value={"hlg_metadata_complete": True}
-    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run") as run:
+    ), patch("video._supports_gpu_lut", return_value=True), patch("video.subprocess.run") as run:
         def fake_run(command, **kwargs):
             Path(command[-1]).write_bytes(b"partial")
             raise subprocess.CalledProcessError(1, command, stderr="encode failed")
@@ -252,7 +252,7 @@ def test_transcode_removes_output_when_reprobe_fails(tmp_path: Path):
         return subprocess.CompletedProcess(command, 0, "", "")
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", side_effect=[{"hlg_metadata_complete": True}, RuntimeError("ffprobe failed")]
-    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run", side_effect=fake_run):
+    ), patch("video._supports_gpu_lut", return_value=True), patch("video.subprocess.run", side_effect=fake_run):
         with pytest.raises(RuntimeError, match="ffprobe failed"):
             video.transcode_hlg_video(source, lut, output, 1.0)
     assert not output.exists()
@@ -277,35 +277,23 @@ def test_hlg_filter_does_not_tone_map_to_sdr(tmp_path: Path):
 
 
 
-def test_transcode_falls_back_to_x265_when_nvenc_is_unavailable(tmp_path: Path):
+def test_transcode_never_falls_back_to_cpu_when_gpu_path_fails(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
-    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
-
-    source_metadata = {"hlg_metadata_complete": True}
-    output_metadata = {
-        "codec": "hevc", "codec_profile": "Main 10",
-        "pixel_format": "yuv420p10le", "bit_depth": 10,
-        "color_transfer": "arib-std-b67", "color_primaries": "bt2020",
-        "color_matrix": "bt2020nc",
-    }
-
-    def fake_run(command, **kwargs):
-        if "hevc_nvenc" in command:
-            raise subprocess.CalledProcessError(1, command, stderr="Cannot load libcuda")
-        Path(command[-1]).write_bytes(b"cpu-mp4")
-        return subprocess.CompletedProcess(command, 0, "", "")
+    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8)
 
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-        "video.inspect_video", side_effect=[source_metadata, output_metadata]
-    ), patch("video._supports_gpu_lut", return_value=False), patch("video.subprocess.run", side_effect=fake_run) as run:
-        video.transcode_hlg_video(source, lut, output, 0.5)
+        "video.inspect_video", return_value={"hlg_metadata_complete": True}
+    ), patch("video._supports_gpu_lut", return_value=True), patch(
+        "video.subprocess.run",
+        side_effect=subprocess.CalledProcessError(1, ["ffmpeg"], stderr="Vulkan device unavailable"),
+    ) as run:
+        with pytest.raises(RuntimeError, match="CPU processing was not started"):
+            video.transcode_hlg_video(source, lut, output, 1.0)
 
-    assert run.call_count == 2
-    cpu_command = run.call_args_list[1].args[0]
-    assert cpu_command[cpu_command.index("-c:v") + 1] == "libx265"
-    assert cpu_command[cpu_command.index("-pix_fmt") + 1] == "yuv420p10le"
-    assert output.read_bytes() == b"cpu-mp4"
+    assert run.call_count == 4
+    assert all("hevc_nvenc" not in call.args[0] for call in [])
+    assert not output.exists()
 
 
 def test_gpu_filter_routes_lut_through_vulkan_libplacebo(tmp_path: Path):
@@ -349,6 +337,7 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
         assert "-init_hw_device" in command
         assert "vulkan=vk:0" in command
         assert command[command.index("-hwaccel") + 1] == "cuda"
+        assert command[command.index("-hwaccel_output_format") + 1] == "cuda"
         assert command.index("-hwaccel") < command.index("-i")
         graph = command[command.index("-filter_complex") + 1]
         assert "libplacebo=lut=" in graph
@@ -362,5 +351,5 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
     ):
         backend = video.transcode_hlg_video(source, lut, output, 0.5)
 
-    assert backend == "GPU decode (NVDEC) + Vulkan/libplacebo LUT + NVENC"
+    assert backend.startswith("GPU decode (NVDEC) + Vulkan/libplacebo LUT") and backend.endswith("+ NVENC")
     assert output.read_bytes() == b"gpu-mp4"
