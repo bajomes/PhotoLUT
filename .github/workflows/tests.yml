@@ -45,7 +45,7 @@ jobs:
         env:
           PHOTOLUT_TEST_RAW_DIR: test-data
           PHOTOLUT_CONCURRENCY: "1"
-        run: pytest -q
+        run: pytest -q -rs
 
   docker-smoke:
     runs-on: ubuntu-latest
