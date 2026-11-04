@@ -594,7 +594,7 @@ def test_gpu_filter_tone_maps_hlg_before_rec709_lut(tmp_path: Path):
 
     assert graph.count("libplacebo=") == 2
     assert "tonemapping=bt.2390" in graph
-    assert "lut='") + str(tmp_path / "sedona.cube") + "'" in graph
+    assert "lut='" + str(tmp_path / "sedona.cube") + "'" in graph
     assert "lut_type=native" in graph
     assert graph.count("color_primaries=bt709") == 2
     assert graph.count("color_trc=bt709") == 2
