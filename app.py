@@ -18,13 +18,27 @@ import numpy as np
 import tifffile
 from fastapi import FastAPI, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
 import core
 import jobs
 import video
+
+
+class LeasedFileResponse(FileResponse):
+    """Release a job-output lease even when a client disconnects mid-download."""
+
+    def __init__(self, *args, lease_job_id: str, **kwargs):
+        self.lease_job_id = lease_job_id
+        super().__init__(*args, **kwargs)
+
+    async def __call__(self, scope, receive, send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            jobs.release_output_lease(self.lease_job_id)
+
 
 BASE_DIR = Path(__file__).resolve().parent
 WORK_DIR = Path(os.environ.get("PHOTOLUT_WORK_DIR", "/tmp/photolut-jobs"))
@@ -483,11 +497,11 @@ def download_zip(
         if not jobs.acquire_output_lease(job_id):
             raise HTTPException(404, "Job results are no longer available")
 
-    return FileResponse(
+    return LeasedFileResponse(
         zip_path,
         filename=f"{download_name}.zip",
         media_type="application/zip",
-        background=BackgroundTask(jobs.release_output_lease, job_id),
+        lease_job_id=job_id,
     )
 
 
@@ -502,10 +516,10 @@ def get_file(job_id: str, name: str) -> FileResponse:
             raise HTTPException(404, "File not found")
         if not jobs.acquire_output_lease(job_id):
             raise HTTPException(404, "File not found")
-    return FileResponse(
+    return LeasedFileResponse(
         path,
         filename=name,
-        background=BackgroundTask(jobs.release_output_lease, job_id),
+        lease_job_id=job_id,
     )
 
 
