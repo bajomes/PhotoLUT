@@ -350,10 +350,37 @@ function renderResults(outputs,jobId){
     const before=document.createElement("img");before.className="before";before.alt="Before LUT";before.src=out.preview_before;
     const divider=document.createElement("div");divider.className="divider";cmp.append(after,before,divider);
     const name=document.createElement("div");name.className="card-name";name.textContent=out.filename;name.title=out.filename;
+    card.dataset.outputId=String(out.id);
     const links=document.createElement("div");links.className="card-downloads";
     const tiff=document.createElement("a");tiff.href=out.download_tiff;tiff.download="";tiff.className="tiff-btn";tiff.textContent="↓ TIFF · 16-bit";
     const jpeg=document.createElement("a");jpeg.href=out.download_jpeg;jpeg.download="";jpeg.className="jpeg-btn";jpeg.textContent="↓ JPEG";
-    links.append(tiff,jpeg);card.append(cmp,name,links);
+    links.append(tiff,jpeg);
+    const remove=document.createElement("button");remove.type="button";remove.className="remove-result";remove.textContent="Remove";remove.setAttribute("aria-label","Remove "+out.filename+" from this export");
+    remove.addEventListener("click",async()=>{
+      if(remove.disabled)return;
+      remove.disabled=true;remove.textContent="Removing…";
+      try{
+        const response=await fetch("/api/jobs/"+encodeURIComponent(jobId)+"/outputs/"+encodeURIComponent(out.id),{method:"DELETE"});
+        const data=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(data.detail||"Could not remove this export item.");
+        card.remove();
+        const remaining=Array.isArray(data.outputs)?data.outputs:[];
+        $("summary").textContent=remaining.length+" photos available for export.";
+        $("dlZip").hidden=remaining.length===0;
+        if(remaining.length){
+          const first=remaining[0];previewProcessed=true;
+          $("previewBefore").src=first.preview_before;$("previewAfter").src=first.preview_after;
+          $("previewFilename").textContent=first.filename;$("previewCompare").style.setProperty("--pos","50%");
+          $("previewWrap").hidden=false;$("emptyStage").hidden=true;syncIntensity();
+        }else{
+          $("previewWrap").hidden=true;$("emptyStage").hidden=false;
+          $("stageMessage").textContent="All export items have been removed.";
+          $("previewBefore").removeAttribute("src");$("previewAfter").removeAttribute("src");
+          $("previewFilename").textContent="";
+        }
+      }catch(error){remove.disabled=false;remove.textContent="Remove";showError(error.message||String(error));}
+    });
+    card.append(cmp,name,links,remove);
     if(!out.metadata_preserved){const warning=document.createElement("p");warning.className="metadata-warning";warning.textContent="Some camera metadata could not be copied. Check that ExifTool is installed and supports this RAW format.";card.appendChild(warning)}
     gallery.appendChild(card);wireCompare(cmp);
   });
@@ -389,7 +416,7 @@ document.addEventListener("keydown",e=>{
 });
 $("newBatchBtn").addEventListener("click",()=>$("resetBtn").click());
 $("resetBtn").addEventListener("click",()=>{
-  closeDownloadPicker(false);$("dlZip").removeAttribute("data-job-id");$("inputArea").classList.remove("results-mode");$("inputArea").style.display="grid";previewRevision++;previewLoading=false;processing=false;previewProcessed=false;rawFiles=[];cubeFile=null;$("intensity").disabled=false;$("resetBtn").disabled=false;$("rawInput").disabled=false;$("cubeInput").disabled=false;$("dropRaw").removeAttribute("aria-disabled");$("dropCube").removeAttribute("aria-disabled");$("dropRaw").tabIndex=0;$("dropCube").tabIndex=0;$("processBtn").style.display="block";$("rawName").textContent="CR2, NEF, ARW, DNG and more";$("cubeName").textContent="One .cube file for the batch";$("dropRaw").classList.remove("filled");$("dropCube").classList.remove("filled");$("rawInput").value="";$("cubeInput").value="";$("colorspace").value="srgb";$("intensity").value=100;$("intensityVal").textContent="100%";$("processBtn").disabled=true;$("result").style.display="none";$("inputArea").style.display="grid";$("progressWrap").style.display="none";$("error").replaceChildren();$("fileList").style.display="none";$("previewWrap").hidden=true;$("emptyStage").hidden=false;$("stageMessage").textContent="Add RAW photos and a LUT";$("previewBefore").removeAttribute("src");$("previewAfter").removeAttribute("src");$("previewFilename").textContent="";$("previewCompare").style.setProperty("--pos","50%");$("resetBtn").style.display="none";syncIntensity();updateState();
+  closeDownloadPicker(false);$("dlZip").hidden=false;$("dlZip").removeAttribute("data-job-id");$("inputArea").classList.remove("results-mode");$("inputArea").style.display="grid";previewRevision++;previewLoading=false;processing=false;previewProcessed=false;rawFiles=[];cubeFile=null;$("intensity").disabled=false;$("resetBtn").disabled=false;$("rawInput").disabled=false;$("cubeInput").disabled=false;$("dropRaw").removeAttribute("aria-disabled");$("dropCube").removeAttribute("aria-disabled");$("dropRaw").tabIndex=0;$("dropCube").tabIndex=0;$("processBtn").style.display="block";$("rawName").textContent="CR2, NEF, ARW, DNG and more";$("cubeName").textContent="One .cube file for the batch";$("dropRaw").classList.remove("filled");$("dropCube").classList.remove("filled");$("rawInput").value="";$("cubeInput").value="";$("colorspace").value="srgb";$("intensity").value=100;$("intensityVal").textContent="100%";$("processBtn").disabled=true;$("result").style.display="none";$("inputArea").style.display="grid";$("progressWrap").style.display="none";$("error").replaceChildren();$("fileList").style.display="none";$("previewWrap").hidden=true;$("emptyStage").hidden=false;$("stageMessage").textContent="Add RAW photos and a LUT";$("previewBefore").removeAttribute("src");$("previewAfter").removeAttribute("src");$("previewFilename").textContent="";$("previewCompare").style.setProperty("--pos","50%");$("resetBtn").style.display="none";syncIntensity();updateState();
 });
 wireCompare($("previewCompare"));
 updateState();
