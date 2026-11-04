@@ -301,6 +301,12 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
     if not 0.0 <= intensity <= 1.0:
         raise ValueError("intensity must be between 0.0 and 1.0")
 
+    if not _supports_gpu_lut(ffmpeg):
+        raise RuntimeError(
+            "GPU export is unavailable: this FFmpeg build does not expose libplacebo custom .cube LUT support. "
+            "CPU fallback is disabled to prevent unexpectedly high CPU load."
+        )
+
     baked_lut = output.with_name("photolut-intensity-hlg.cube")
     _write_intensity_lut(parsed_lut, intensity, baked_lut)
 
@@ -310,11 +316,6 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         "-colorspace", "bt2020nc",
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
     ]
-    if not _supports_gpu_lut(ffmpeg):
-        raise RuntimeError(
-            "GPU export is unavailable: this FFmpeg build does not expose libplacebo custom .cube LUT support. "
-            "CPU fallback is disabled to prevent unexpectedly high CPU load."
-        )
 
     last_errors: list[str] = []
     selected_backend: str | None = None
