@@ -48,13 +48,13 @@ def _gpu_video_stack_skip_reason() -> str | None:
         missing = []
         if "hevc_nvenc" not in encoders.stdout + encoders.stderr:
             missing.append("hevc_nvenc")
-        if not re.search(r"\\blibplacebo\\b", filters.stdout + filters.stderr):
+        if not re.search(r"\blibplacebo\b", filters.stdout + filters.stderr):
             missing.append("libplacebo")
-        if re.search(r"^\\s*lut\\s+<", help_text, re.MULTILINE) is None:
+        if re.search(r"^\s*lut\s+<", help_text, re.MULTILINE) is None:
             missing.append("libplacebo custom .cube LUT option")
         if not re.search(r"^cuda$", hwaccels.stdout + hwaccels.stderr, re.MULTILINE):
             missing.append("CUDA hwaccel")
-        if not re.search(r"(?:^|[,\\s])vulkan(?:$|[,\\s])", device_text, re.IGNORECASE):
+        if not re.search(r"(?:^|[,\s])vulkan(?:$|[,\s])", device_text, re.IGNORECASE):
             missing.append("Vulkan hardware device support")
         if missing:
             return "FFmpeg build lacks required GPU features: " + ", ".join(missing)
@@ -118,8 +118,7 @@ def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
     assert source_metadata["bit_depth"] == 10
 
     backend = video.transcode_hlg_video(source, lut, output, 0.65)
-    assert backend.startswith("GPU decode (NVDEC) + Vulkan/libplacebo LUT")
-    assert backend.endswith("+ NVENC")
+    assert backend == "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo LUT + NVENC"
 
     result = video.inspect_video(output)
     assert output.is_file() and output.stat().st_size > 0
