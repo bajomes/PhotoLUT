@@ -280,7 +280,7 @@ def test_hlg_filter_does_not_tone_map_to_sdr(tmp_path: Path):
 def test_transcode_never_falls_back_to_cpu_when_gpu_path_fails(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
-    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8)
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
 
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", return_value={"hlg_metadata_complete": True}
@@ -292,7 +292,6 @@ def test_transcode_never_falls_back_to_cpu_when_gpu_path_fails(tmp_path: Path):
             video.transcode_hlg_video(source, lut, output, 1.0)
 
     assert run.call_count == 4
-    assert all("hevc_nvenc" not in call.args[0] for call in [])
     assert not output.exists()
 
 
