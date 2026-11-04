@@ -21,7 +21,7 @@ docker compose down
 - Recognized RAW extensions: CR2, CR3, NEF, ARW, SRF, SR2, DNG, ORF, RW2, RAF, PEF, and 3FR. Successful decoding depends on the exact camera model being supported by rawpy/LibRaw.
 - 3D `.cube` LUTs, trilinear interpolation, and adjustable LUT intensity with a live preview of the first selected RAW photo.
 - 16-bit TIFF and high-quality JPEG exports from the RAW batch workflow.
-- Experimental Ultra HDR JPEG export from single-page 16-bit RGB/RGBA TIFF, with JPEG quality and Max Boost controls; see [Ultra HDR photo export](docs/ultrahdr-photo-export.md).
+- Experimental Ultra HDR JPEG export from single-page 16-bit RGB/RGBA TIFF (24 MP limit), with JPEG quality and Max Boost controls; see [Ultra HDR photo export](docs/ultrahdr-photo-export.md).
 - Before/after comparison slider, job progress, and ZIP download.
 - sRGB ICC profile embedding and best-effort metadata copying with ExifTool.
 - Original input filenames are retained for the result cards; output filenames are normalized for portable filesystem use.
