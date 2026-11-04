@@ -372,7 +372,7 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
             "-i", str(source), "-filter_complex", _gpu_ffmpeg_filter(baked_lut),
             "-map", "[outv]", "-map", "0:a?",
             "-c:v", "hevc_nvenc", "-gpu", "0", "-preset", "p5", "-tune", "hq",
-            "-profile:v", "main10", "-pix_fmt", "p010le",
+            "-profile:v", "main10",
             "-rc", "vbr", "-cq", "19", "-b:v", "0",
         ] + output_metadata_args
         try:
