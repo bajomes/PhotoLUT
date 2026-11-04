@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
+import threading
 import time
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from starlette.datastructures import UploadFile
 
 import app
 import jobs
@@ -80,6 +83,61 @@ def test_preview_returns_original_and_lut_images(client, monkeypatch):
         with Image.open(io.BytesIO(image_bytes)) as image:
             assert image.size == (10, 8)
             assert image.mode == "RGB"
+
+
+def test_preview_cancellation_keeps_processing_slot_until_worker_exits(monkeypatch):
+    started = threading.Event()
+    finish = threading.Event()
+    events = []
+
+    async def save_upload(upload, dest, max_bytes, remaining_total_bytes):
+        payload = await upload.read()
+        dest.write_bytes(payload)
+        return len(payload)
+
+    def render_preview(*_args):
+        started.set()
+        if not finish.wait(timeout=5):
+            raise TimeoutError("test did not release preview worker")
+        return {"before": "before", "graded": "graded"}
+
+    class Slots:
+        def acquire(self, blocking=False):
+            events.append("acquire")
+            return True
+
+        def release(self):
+            events.append("release")
+
+    monkeypatch.setattr(app, "_save_upload", save_upload)
+    monkeypatch.setattr(app, "_render_preview", render_preview)
+    monkeypatch.setattr(app, "PROCESSING_SLOTS", Slots())
+
+    async def exercise():
+        request = asyncio.create_task(
+            app.preview(
+                UploadFile(filename="sample.nef", file=io.BytesIO(b"raw")),
+                UploadFile(filename="identity.cube", file=io.BytesIO(make_cube())),
+            )
+        )
+        assert await asyncio.to_thread(started.wait, 2), "preview worker did not start"
+        request.cancel()
+        await asyncio.sleep(0.05)
+
+        # The request is cancelled, but its non-cancellable worker still owns
+        # the processing slot and the TemporaryDirectory input files.
+        assert not request.done()
+        assert events == ["acquire"]
+
+        finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await request
+        assert events == ["acquire", "release"]
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        finish.set()
 
 
 def test_preview_rejects_unsupported_raw_extension(client):
