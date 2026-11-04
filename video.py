@@ -292,18 +292,19 @@ def _write_intensity_lut(lut: core.CubeLUT, intensity: float, output: Path) -> N
 
 
 def _gpu_ffmpeg_filter(lut_path: Path) -> str:
-    """Upload decoded 10-bit frames to Vulkan and run the .cube LUT on GPU."""
+    """Grade software 10-bit frames on libplacebo's NVIDIA Vulkan device, then upload to CUDA."""
     lut = str(lut_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
     return (
-        "[0:v]hwdownload,format=p010le,hwupload,"
-        # Keep libplacebo's output as Vulkan hardware frames. Setting its
-        # format option to a software pixel format makes it download internally,
-        # so a following hwdownload filter receives software frames and fails
-        # while configuring the filter graph.
+        "[0:v]hwdownload,format=p010le,"
+        # FFmpeg 9.0's Vulkan hardware-frame import path is incompatible with
+        # this NVIDIA/libplacebo combination. Let libplacebo initialize its own
+        # Vulkan device (verified to select the NVIDIA GPU), then transfer its
+        # 10-bit software output to CUDA for NVENC. This keeps grading on GPU
+        # and avoids the failing external Vulkan-device handoff.
         f"libplacebo=lut='{lut}':lut_type=native:"
         "colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67:"
         "range=tv:peak_detect=false,"
-        "hwdownload,format=p010le[outv]"
+        "format=p010le,hwupload_cuda[outv]"
     )
 
 
@@ -362,14 +363,11 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
     selected_backend: str | None = None
     try:
         _write_intensity_lut(parsed_lut, intensity, baked_lut)
-        # Select Vulkan by vendor name instead of an unstable physical-device index.
-        # This prevents a hybrid laptop from silently grading on its integrated GPU
-        # or a software Vulkan implementation.
-        vulkan_device = "NVIDIA"
+        # libplacebo self-initializes Vulkan and selects the discrete NVIDIA
+        # device through the container's NVIDIA EGL ICD. Do not pass an FFmpeg
+        # Vulkan HWDeviceContext: FFmpeg 9.0 cannot import it reliably here.
         command = [
             ffmpeg, "-hide_banner", "-loglevel", "debug", "-y",
-            "-init_hw_device", f"vulkan=vk:{vulkan_device}",
-            "-filter_hw_device", "vk",
             "-hwaccel", "cuda", "-hwaccel_device", "0", "-hwaccel_output_format", "cuda",
             "-i", str(source), "-filter_complex", _gpu_ffmpeg_filter(baked_lut),
             "-map", "[outv]", "-map", "0:a?",
@@ -382,7 +380,7 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
                 command, check=True, capture_output=True, text=True,
                 timeout=VIDEO_PROCESS_TIMEOUT_SECONDS,
             )
-            selected_backend = "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo LUT + NVENC"
+            selected_backend = "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo LUT + CUDA upload/NVENC"
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError("GPU video processing exceeded the 20-minute time limit.") from exc
         except subprocess.CalledProcessError as exc:
