@@ -88,8 +88,8 @@ def test_blend_intensity_endpoints():
     original = np.array([[[0.1, 0.2, 0.3]]], dtype=np.float32)
     graded = np.array([[[0.8, 0.7, 0.6]]], dtype=np.float32)
 
-    np.testing.assert_allclose(core.blend_intensity(graded, original, 0), original)
-    np.testing.assert_allclose(core.blend_intensity(graded, original, 1), graded)
+    np.testing.assert_array_equal(core.blend_intensity(graded, original, 0), original)
+    np.testing.assert_array_equal(core.blend_intensity(graded, original, 1), graded)
 
 
 def test_blend_intensity_mixes_srgb_values_in_linear_light():
