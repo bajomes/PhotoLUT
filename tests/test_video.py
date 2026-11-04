@@ -348,3 +348,24 @@ def test_transcode_does_not_write_temporary_lut_when_gpu_support_is_missing(tmp_
 
     assert not (tmp_path / "photolut-intensity-hlg.cube").exists()
     assert not output.exists()
+
+
+
+def test_transcode_cleans_partial_temporary_lut_when_write_fails(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
+
+    def fail_after_partial_write(_lut, _intensity, path):
+        path.write_text("partial")
+        raise OSError("disk full")
+
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", return_value={"hlg_metadata_complete": True}
+    ), patch("video._supports_gpu_lut", return_value=True), patch(
+        "video._write_intensity_lut", side_effect=fail_after_partial_write
+    ):
+        with pytest.raises(OSError, match="disk full"):
+            video.transcode_hlg_video(source, lut, output, 1.0)
+
+    assert not (tmp_path / "photolut-intensity-hlg.cube").exists()
