@@ -88,8 +88,18 @@ def test_blend_intensity_endpoints():
     original = np.array([[[0.1, 0.2, 0.3]]], dtype=np.float32)
     graded = np.array([[[0.8, 0.7, 0.6]]], dtype=np.float32)
 
-    np.testing.assert_allclose(core.blend_intensity(graded, original, 0), original)
-    np.testing.assert_allclose(core.blend_intensity(graded, original, 1), graded)
+    np.testing.assert_array_equal(core.blend_intensity(graded, original, 0), original)
+    np.testing.assert_array_equal(core.blend_intensity(graded, original, 1), graded)
+
+
+def test_blend_intensity_mixes_srgb_values_in_linear_light():
+    original = np.zeros((1, 1, 3), dtype=np.float32)
+    graded = np.ones((1, 1, 3), dtype=np.float32)
+
+    result = core.blend_intensity(graded, original, 0.5)
+
+    # A 50% linear-light blend encodes to about 0.735 in sRGB, not 0.5.
+    np.testing.assert_allclose(result, 0.73535698, atol=1e-6)
 
 
 def test_rejects_invalid_image_shape(tmp_path):
