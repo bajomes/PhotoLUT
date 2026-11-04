@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from urllib.parse import parse_qs, urlparse
 
 from playwright.sync_api import expect, sync_playwright
@@ -33,66 +32,62 @@ def main() -> None:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(accept_downloads=True)
 
-        page.route(
-            "**/api/preview",
-            lambda route: route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps({"before": PIXEL, "graded": PIXEL}),
-            ),
-        )
-        page.route(
-            "**/api/process",
-            lambda route: route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps({"job_id": "job123"}),
-            ),
-        )
-        page.route(
-            "**/api/jobs/job123",
-            lambda route: route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps({
-                    "id": "job123",
-                    "status": "done",
-                    "progress": 100,
-                    "current_file": None,
-                    "total_files": 2,
-                    "done_files": 2,
-                    "message": "",
-                    "outputs": outputs,
-                }),
-            ),
-        )
-
-        def remove_output(route):
+        def route_requests(route):
             nonlocal outputs
-            output_id = urlparse(route.request.url).path.rsplit("/", 1)[-1]
-            outputs = [item for item in outputs if item["id"] != output_id]
-            route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps({
-                    "removed": output_id,
-                    "outputs": outputs,
-                }),
-            )
+            request = route.request
+            parsed = urlparse(request.url)
 
-        def download_archive(route):
-            query = parse_qs(urlparse(route.request.url).query)
-            archive_format = query.get("format", [""])[0]
-            requested_formats.append(archive_format)
-            route.fulfill(
-                status=200,
-                content_type="application/zip",
-                headers={"Content-Disposition": 'attachment; filename="photolut.zip"'},
-                body=b"PK\\x05\\x06" + b"\\x00" * 18,
-            )
+            if parsed.path == "/api/preview":
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"before": PIXEL, "graded": PIXEL}),
+                )
+            elif parsed.path == "/api/process":
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"job_id": "job123"}),
+                )
+            elif parsed.path == "/api/jobs/job123":
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({
+                        "id": "job123",
+                        "status": "done",
+                        "progress": 100,
+                        "current_file": None,
+                        "total_files": 2,
+                        "done_files": 2,
+                        "message": "",
+                        "outputs": outputs,
+                    }),
+                )
+            elif parsed.path.startswith("/api/jobs/job123/outputs/"):
+                output_id = parsed.path.rsplit("/", 1)[-1]
+                outputs = [item for item in outputs if item["id"] != output_id]
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({
+                        "removed": output_id,
+                        "outputs": outputs,
+                    }),
+                )
+            elif parsed.path == "/files/job123/all.zip":
+                archive_format = parse_qs(parsed.query).get("format", [""])[0]
+                requested_formats.append(archive_format)
+                route.fulfill(
+                    status=200,
+                    content_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="photolut.zip"'},
+                    body=b"PK\\x05\\x06" + b"\\x00" * 18,
+                )
+            else:
+                route.continue_()
 
-        page.route("**/api/jobs/job123/outputs/*", remove_output)
-        page.route(re.compile(r".*/files/job123/all\.zip\?format=(?:jpeg|tiff|all)$"), download_archive)
+        page.route("**/*", route_requests)
 
         page.goto("http://127.0.0.1:8000/", wait_until="networkidle")
         page.locator("#rawInput").set_input_files([
