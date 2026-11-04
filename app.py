@@ -16,12 +16,14 @@ import numpy as np
 import tifffile
 from fastapi import FastAPI, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
 import core
 import jobs
 import video
+import hdr_photo
 
 BASE_DIR = Path(__file__).resolve().parent
 WORK_DIR = Path(os.environ.get("PHOTOLUT_WORK_DIR", "/tmp/photolut-jobs"))
@@ -362,6 +364,76 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
         raise HTTPException(500, "Could not start processing job") from exc
 
     return {"job_id": job.id}
+
+
+@app.post("/api/ultrahdr/export")
+async def export_ultrahdr_photo(
+    tiff_file: UploadFile,
+    quality: int = Form(95),
+    max_boost: float = Form(hdr_photo.DEFAULT_BOOST),
+) -> FileResponse:
+    """Convert an SDR sRGB 16-bit TIFF to an experimental Ultra HDR JPEG."""
+    filename = tiff_file.filename or "photo.tiff"
+    if Path(filename).suffix.lower() not in {".tif", ".tiff"}:
+        raise HTTPException(400, "Input must be a .tif or .tiff file")
+    if not 1 <= quality <= 100:
+        raise HTTPException(422, "JPEG quality must be between 1 and 100")
+    if not (1.0 < max_boost <= 8.0):
+        raise HTTPException(422, "Max Boost must be greater than 1 and no more than 8")
+    if not PROCESSING_SLOTS.acquire(blocking=False):
+        raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
+
+    job_dir: Path | None = None
+    try:
+        # Create the job directory only after entering the cleanup/release guard;
+        # filesystem errors must not leak the processing semaphore slot.
+        job_dir = Path(tempfile.mkdtemp(prefix="photolut-ultrahdr-", dir=WORK_DIR))
+        source = job_dir / "input.tiff"
+        output = job_dir / f"{_safe_output_stem(filename)}_ultrahdr.jpg"
+        await _save_upload(tiff_file, source, hdr_photo.MAX_TIFF_BYTES,
+                           hdr_photo.MAX_TIFF_BYTES)
+        encode_task = asyncio.create_task(asyncio.to_thread(
+            hdr_photo.export_ultrahdr, source, output,
+            quality=quality, max_boost=max_boost,
+        ))
+        try:
+            result = await asyncio.shield(encode_task)
+        except asyncio.CancelledError:
+            # A cancelled request does not stop its worker thread. Wait for it
+            # before the finally block removes its directory or releases its slot.
+            try:
+                await encode_task
+            except Exception:
+                pass
+            raise
+        if not output.is_file() or not result.get("gain_map_verified"):
+            raise HTTPException(422, "Ultra HDR encoder did not produce a verified gain map")
+        return FileResponse(
+            output, media_type="image/jpeg", filename=output.name,
+            headers={"X-PhotoLUT-Gain-Map-Verified": "true"},
+            background=BackgroundTask(shutil.rmtree, job_dir, ignore_errors=True),
+        )
+    except HTTPException:
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        raise
+    except ValueError as exc:
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        raise HTTPException(422, str(exc)) from exc
+    except RuntimeError as exc:
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        message = str(exc).lower()
+        status = 503 if "not installed" in message else 504 if "timed out" in message else 422
+        raise HTTPException(status, str(exc)) from exc
+    except Exception as exc:
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        raise HTTPException(500, "Ultra HDR export failed") from exc
+    finally:
+        PROCESSING_SLOTS.release()
+
 
 
 @app.get("/api/jobs/{job_id}")
