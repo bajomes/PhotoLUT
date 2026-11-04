@@ -296,14 +296,14 @@ def _gpu_ffmpeg_filter(lut_path: Path) -> str:
     lut = str(lut_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
     return (
         "[0:v]hwdownload,format=p010le,hwupload,"
-        # Use planar yuv420p10le for libplacebo's Vulkan render target. P010LE
-        # is the NVDEC/NVENC semiplanar surface format; asking libplacebo to
-        # render directly to it can leave the Vulkan filter graph with no
-        # negotiated output format on some drivers.
-        f"libplacebo=lut='{lut}':lut_type=native:format=yuv420p10le:"
+        # Keep libplacebo's output as Vulkan hardware frames. Setting its
+        # format option to a software pixel format makes it download internally,
+        # so a following hwdownload filter receives software frames and fails
+        # while configuring the filter graph.
+        f"libplacebo=lut='{lut}':lut_type=native:"
         "colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67:"
         "range=tv:peak_detect=false,"
-        "hwdownload,format=yuv420p10le[outv]"
+        "hwdownload,format=p010le[outv]"
     )
 
 
