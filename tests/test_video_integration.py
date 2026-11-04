@@ -10,9 +10,28 @@ import pytest
 import video
 
 
+def _gpu_video_stack_available() -> bool:
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        return False
+    try:
+        encoders = subprocess.run([ffmpeg, "-hide_banner", "-encoders"], check=True, capture_output=True, text=True, timeout=15)
+        filters = subprocess.run([ffmpeg, "-hide_banner", "-filters"], check=True, capture_output=True, text=True, timeout=15)
+        help_result = subprocess.run([ffmpeg, "-hide_banner", "-h", "filter=libplacebo"], capture_output=True, text=True, timeout=15)
+        help_text = help_result.stdout + help_result.stderr
+        return (
+            "hevc_nvenc" in encoders.stdout + encoders.stderr
+            and "libplacebo" in filters.stdout + filters.stderr
+            and re.search(r"^\\s*lut\\s+<", help_text, re.MULTILINE) is not None
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 pytestmark = pytest.mark.skipif(
-    not shutil.which("ffmpeg") or not shutil.which("ffprobe"),
-    reason="FFmpeg and FFprobe are required for the video integration test",
+    not _gpu_video_stack_available(),
+    reason="GPU integration test requires FFmpeg with NVENC and libplacebo custom .cube LUT support",
 )
 
 
