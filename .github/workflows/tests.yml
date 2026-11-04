@@ -95,6 +95,7 @@ jobs:
           ! grep -q 'id="preserveHdrBtn"' /tmp/photolut-index.html
           grep -q 'id="intensity"' /tmp/photolut-index.html
           grep -q 'id="downloadPicker"' /tmp/photolut-index.html
+          grep -q 'remove-result' /tmp/photolut-index.html
           grep -q 'family=Inter:wght@100..900' /tmp/photolut-index.html
           grep -q 'Process batch' /tmp/photolut-index.html
           curl --fail --silent http://127.0.0.1:8000/luts/photolut-neutral-hlg-bt2020.cube --output /tmp/photolut-neutral-hlg-bt2020.cube
@@ -126,5 +127,7 @@ jobs:
           Path('/tmp/photolut-inline.js').write_text('\\n'.join(parser.parts))
           PY
           node --check /tmp/photolut-inline.js
+          curl --fail --silent http://127.0.0.1:8000/openapi.json |
+            python -c 'import json, sys; schema=json.load(sys.stdin); assert "delete" in schema["paths"]["/api/jobs/{job_id}/outputs/{output_id}"]'
           curl --fail --silent http://127.0.0.1:8000/openapi.json |
             python -c 'import json, sys; assert json.load(sys.stdin)["info"]["title"] == "PhotoLUT"'
