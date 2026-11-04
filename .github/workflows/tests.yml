@@ -94,6 +94,8 @@ jobs:
           grep -q 'data-studio-mode="photos"' /tmp/photolut-index.html
           grep -q 'data-studio-mode="video"' /tmp/photolut-index.html
           grep -q 'id="videoPreviewPanel"' /tmp/photolut-index.html
+          grep -q 'id="videoLutProfile"' /tmp/photolut-index.html
+          grep -q 'photolut_sdr_rec709_10bit.mp4' /tmp/photolut-index.html
           grep -q '.shell\[data-mode="video"\] #inputArea' /tmp/photolut-index.html
           ! grep -q 'id="videoCompareSeconds"' /tmp/photolut-index.html
           ! grep -q 'id="preserveHdrBtn"' /tmp/photolut-index.html
