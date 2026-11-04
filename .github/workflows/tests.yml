@@ -54,6 +54,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build Docker image
         run: docker build --tag photolut:ci .
+      - name: Install Playwright browser
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
       - name: Start container
         run: docker run --detach --name photolut-ci --publish 127.0.0.1:8000:8000 photolut:ci
       - name: Verify container runs unprivileged
@@ -127,6 +131,7 @@ jobs:
           Path('/tmp/photolut-inline.js').write_text('\\n'.join(parser.parts))
           PY
           node --check /tmp/photolut-inline.js
+          python tests/browser_export_smoke.py
           curl --fail --silent http://127.0.0.1:8000/openapi.json |
             python -c 'import json, sys; schema=json.load(sys.stdin); assert "delete" in schema["paths"]["/api/jobs/{job_id}/outputs/{output_id}"]'
           curl --fail --silent http://127.0.0.1:8000/openapi.json |
