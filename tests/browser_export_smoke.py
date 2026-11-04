@@ -92,7 +92,7 @@ def main() -> None:
             )
 
         page.route("**/api/jobs/job123/outputs/*", remove_output)
-        page.route(re.compile(r".*/files/job123/all\\.zip\\?format=(?:jpeg|tiff|all)$"), download_archive)
+        page.route(re.compile(r".*/files/job123/all\.zip\?format=(?:jpeg|tiff|all)$"), download_archive)
 
         page.goto("http://127.0.0.1:8000/", wait_until="networkidle")
         page.locator("#rawInput").set_input_files([
