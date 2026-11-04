@@ -71,6 +71,18 @@ def update_job(job_id: str, **kwargs) -> None:
             state.finished_at = None
 
 
+def remove_job_output(job_id: str, output_id: str) -> dict | None:
+    """Atomically remove one completed export from a job's visible result set."""
+    with _lock:
+        state = _jobs.get(job_id)
+        if state is None or state.status != JobStatus.DONE:
+            return None
+        for index, output in enumerate(state.outputs):
+            if str(output.get("id", "")) == output_id:
+                return state.outputs.pop(index)
+    return None
+
+
 def _cleanup_once(work_dir: Path, max_age: int, now: float | None = None) -> list[str]:
     """Remove only completed/failed jobs whose retention period has elapsed.
 
