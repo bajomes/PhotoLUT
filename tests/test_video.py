@@ -667,3 +667,49 @@ def test_rec709_intensity_blends_in_bt1886_linear_light(tmp_path: Path):
     expected_white = (0.6 + 0.4 * (0.5 ** 2.4)) ** (1.0 / 2.4)
     assert result.table[0, 0, 0] == pytest.approx([expected_black] * 3, abs=2e-6)
     assert result.table[-1, -1, -1] == pytest.approx([expected_white] * 3, abs=2e-6)
+
+
+def test_video_api_returns_sdr_headers_for_rec709_profile(monkeypatch):
+    observed = {}
+
+    def fake_transcode(source, lut_path, output, intensity, lut_profile):
+        observed.update(
+            source_exists=source.is_file(),
+            lut_exists=lut_path.is_file(),
+            intensity=intensity,
+            lut_profile=lut_profile,
+        )
+        output.write_bytes(b"verified-sdr-video")
+        return "GPU Rec.709 test backend"
+
+    monkeypatch.setattr(video, "transcode_hlg_video", fake_transcode)
+
+    async def exercise():
+        video_upload = UploadFile(
+            filename="source.mp4", file=io.BytesIO(b"video-source")
+        )
+        lut_upload = UploadFile(
+            filename="sedona.cube",
+            file=io.BytesIO(b"LUT_3D_SIZE 2\\n" + b"0 0 0\\n" * 8),
+        )
+        response = await video.process_uploaded_video(
+            video.BackgroundTasks(), video_upload, lut_upload, 0.4, "rec709"
+        )
+
+        assert observed == {
+            "source_exists": True,
+            "lut_exists": True,
+            "intensity": 0.4,
+            "lut_profile": "rec709",
+        }
+        assert response.media_type == "video/mp4"
+        assert response.headers["X-PhotoLUT-HDR-Verified"] == "false"
+        assert response.headers["X-PhotoLUT-Output-Transfer"] == "bt709"
+        assert response.headers["X-PhotoLUT-Output-Profile"] == "rec709"
+        assert "X-PhotoLUT-HDR-Transfer" not in response.headers
+        assert response.filename.endswith("_photolut_sdr_rec709_10bit.mp4")
+        assert Path(response.path).is_file()
+        await response.background()
+        assert not Path(response.path).exists()
+
+    asyncio.run(exercise())
