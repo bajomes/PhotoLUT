@@ -367,7 +367,7 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         # or a software Vulkan implementation.
         vulkan_device = "NVIDIA"
         command = [
-            ffmpeg, "-hide_banner", "-loglevel", "verbose", "-y",
+            ffmpeg, "-hide_banner", "-loglevel", "debug", "-y",
             "-init_hw_device", f"vulkan=vk:{vulkan_device}",
             "-filter_hw_device", "vk",
             "-hwaccel", "cuda", "-hwaccel_device", "0", "-hwaccel_output_format", "cuda",
@@ -391,7 +391,7 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
             raise RuntimeError(
                 "GPU-only HDR export failed. CPU processing was not started. "
                 "NVIDIA Vulkan/CUDA/NVENC diagnostics: "
-                + (detail[-8000:] or "No FFmpeg diagnostic was returned.")
+                + (detail[-16000:] or "No FFmpeg diagnostic was returned.")
             ) from exc
         if not output.is_file() or output.stat().st_size == 0:
             raise RuntimeError("FFmpeg did not produce a valid output file.")
