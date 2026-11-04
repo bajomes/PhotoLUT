@@ -30,7 +30,7 @@ def main() -> None:
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
-        page = browser.new_page(accept_downloads=True)
+        page = browser.new_page()
 
         def route_requests(route):
             nonlocal outputs
@@ -75,19 +75,21 @@ def main() -> None:
                         "outputs": outputs,
                     }),
                 )
-            elif parsed.path == "/files/job123/all.zip":
-                archive_format = parse_qs(parsed.query).get("format", [""])[0]
-                requested_formats.append(archive_format)
-                route.fulfill(
-                    status=200,
-                    content_type="application/zip",
-                    headers={"Content-Disposition": 'attachment; filename="photolut.zip"'},
-                    body=b"PK\\x05\\x06" + b"\\x00" * 18,
-                )
             else:
                 route.continue_()
 
         page.route("**/*", route_requests)
+        page.add_init_script("""
+            window.__photolutDownloads = [];
+            const nativeAnchorClick = HTMLAnchorElement.prototype.click;
+            HTMLAnchorElement.prototype.click = function () {
+                if (this.href.includes("/files/job123/all.zip")) {
+                    window.__photolutDownloads.push(this.href);
+                    return;
+                }
+                return nativeAnchorClick.call(this);
+            };
+        """)
 
         page.goto("http://127.0.0.1:8000/", wait_until="networkidle")
         page.locator("#rawInput").set_input_files([
@@ -114,9 +116,12 @@ def main() -> None:
         for archive_format in ("jpeg", "tiff", "all"):
             page.locator("#dlZip").click()
             expect(page.locator("#downloadPicker")).to_be_visible()
-            with page.expect_download():
-                page.locator(f'[data-format="{archive_format}"]').click()
+            page.locator(f'[data-format="{archive_format}"]').click()
+            expect(page.locator("#downloadPicker")).to_be_hidden()
 
+        requested_formats = page.evaluate(
+            "window.__photolutDownloads.map(url => new URL(url).searchParams.get('format'))"
+        )
         assert requested_formats == ["jpeg", "tiff", "all"]
 
         page.locator('.result-card[data-output-id="1"] .remove-result').click()
