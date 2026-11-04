@@ -315,6 +315,7 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
         assert "vulkan=vk:NVIDIA" in command
         assert command[command.index("-hwaccel") + 1] == "cuda"
         assert command[command.index("-hwaccel_device") + 1] == "0"
+        assert command[command.index("-gpu") + 1] == "0"
         assert command[command.index("-hwaccel_output_format") + 1] == "cuda"
         assert command.index("-hwaccel") < command.index("-i")
         graph = command[command.index("-filter_complex") + 1]
