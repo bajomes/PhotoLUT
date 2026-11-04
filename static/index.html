@@ -181,7 +181,7 @@ button,input,select,textarea{letter-spacing:inherit}
         <div class="mini-label"><label for="videoLutInput">CUSTOM .CUBE LUT (OPTIONAL)</label></div>
         <input type="file" id="videoLutInput" accept=".cube">
         <div class="mini-label"><label for="videoLutProfile">LUT COLOR SPACE AND EXPORT PROFILE</label></div>
-        <select id="videoLutProfile">
+        <select id="videoLutProfile" disabled>
           <option value="hlg">HLG / BT.2020 — keep HDR (for HLG-authored LUTs)</option>
           <option value="rec709">Rec.709 — export SDR (for standard creative LUTs such as Sedona)</option>
         </select>
@@ -555,6 +555,8 @@ const videoLutProfile=$("videoLutProfile");
 const videoLutIntensity=$("videoLutIntensity");
 const processVideoBtn=$("processVideoBtn");
 videoLutInput.addEventListener("change",()=>{
+  videoLutProfile.disabled=!videoLutInput.files?.length;
+  if(!videoLutInput.files?.length)videoLutProfile.value="hlg";
   processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoHlgConfirmed&&!videoDolbyVisionDetected);
   $("videoProcessStatus").textContent="";
   clearProcessedVideoPreview();
