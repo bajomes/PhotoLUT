@@ -79,7 +79,7 @@ def test_video_process_cancellation_keeps_gpu_slot_and_inputs_until_worker_exits
     events = []
     worker_paths = {}
 
-    def transcode(source, lut_path, output, _intensity):
+    def transcode(source, lut_path, output, _intensity, _lut_profile="hlg"):
         worker_paths.update(
             source=source, lut=lut_path, output=output, temp_dir=source.parent
         )
@@ -504,7 +504,7 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
     ):
         backend = video.transcode_hlg_video(source, lut, output, 0.5)
 
-    assert backend == "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo LUT + NVENC"
+    assert backend == "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo HLG LUT + NVENC"
     assert output.read_bytes() == b"gpu-mp4"
 
 
@@ -568,3 +568,83 @@ def test_intensity_lut_preserves_custom_domain_for_libplacebo(tmp_path: Path):
         serialized.table - parsed.domain_min
     ) / (parsed.domain_max - parsed.domain_min)
     assert normalized_for_libplacebo == pytest.approx(parsed.table, abs=2e-6)
+
+
+
+def test_intensity_lut_bakes_rec709_linear_mix(tmp_path: Path):
+    source = tmp_path / "identity-rec709.cube"
+    source.write_text(
+        "LUT_3D_SIZE 2\\n"
+        "0 0 0\\n1 0 0\\n0 1 0\\n1 1 0\\n"
+        "0 0 1\\n1 0 1\\n0 1 1\\n1 1 1\\n",
+        encoding="ascii",
+    )
+    parsed = video.core.parse_cube(source)
+    baked = tmp_path / "baked-rec709.cube"
+
+    video._write_intensity_lut(parsed, 0.4, baked, "rec709")
+
+    result = video.core.parse_cube(baked)
+    assert result.table == pytest.approx(parsed.table, abs=2e-6)
+    assert "REC709" in baked.read_text(encoding="ascii").splitlines()[0]
+
+
+def test_gpu_filter_tone_maps_hlg_before_rec709_lut(tmp_path: Path):
+    graph = video._gpu_ffmpeg_filter(tmp_path / "sedona.cube", "rec709")
+
+    assert graph.count("libplacebo=") == 2
+    assert "tonemapping=bt.2390" in graph
+    assert "lut='") + str(tmp_path / "sedona.cube") + "'" in graph
+    assert "lut_type=native" in graph
+    assert graph.count("color_primaries=bt709") == 2
+    assert graph.count("color_trc=bt709") == 2
+    assert "color_primaries=bt2020" not in graph
+    assert graph.endswith("hwdownload,format=p010le[outv]")
+
+
+def test_transcode_exports_rec709_lut_as_verified_sdr_bt709(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "sedona.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8, encoding="ascii")
+    output_metadata = {
+        "codec": "hevc", "codec_profile": "Main 10",
+        "pixel_format": "yuv420p10le", "bit_depth": 10,
+        "color_transfer": "bt709", "color_primaries": "bt709",
+        "color_matrix": "bt709",
+    }
+
+    def fake_run(command, **kwargs):
+        graph = command[command.index("-filter_complex") + 1]
+        assert graph.count("libplacebo=") == 2
+        assert command[command.index("-color_trc") + 1] == "bt709"
+        assert command[command.index("-color_primaries") + 1] == "bt709"
+        assert command[command.index("-colorspace") + 1] == "bt709"
+        assert command[command.index("-profile:v") + 1] == "main10"
+        Path(command[-1]).write_bytes(b"verified-sdr")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", side_effect=[{"hlg_metadata_complete": True}, output_metadata]
+    ), patch("video._supports_gpu_lut", return_value=True), patch(
+        "video.subprocess.run", side_effect=fake_run
+    ):
+        backend = video.transcode_hlg_video(source, lut, output, 0.4, "rec709")
+
+    assert backend == (
+        "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo HLG-to-SDR BT.709 "
+        "tone map + Rec.709 LUT + NVENC"
+    )
+    assert output.read_bytes() == b"verified-sdr"
+
+
+def test_transcode_rejects_unknown_lut_profile_before_ffmpeg(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8, encoding="ascii")
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", return_value={"hlg_metadata_complete": True}
+    ), patch("video.subprocess.run") as run:
+        with pytest.raises(ValueError, match="LUT profile must be 'hlg' or 'rec709'"):
+            video.transcode_hlg_video(source, lut, output, 0.4, "camera-log")
+    run.assert_not_called()
+    assert not output.exists()
