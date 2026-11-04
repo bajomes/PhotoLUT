@@ -155,5 +155,6 @@ jobs:
           Path('/tmp/photolut-inline.js').write_text('\\n'.join(parser.parts))
           PY
           node --check /tmp/photolut-inline.js
+          python tests/browser_smoke.py
           curl --fail --silent http://127.0.0.1:8000/openapi.json |
             python -c 'import json, sys; assert json.load(sys.stdin)["info"]["title"] == "PhotoLUT"'
