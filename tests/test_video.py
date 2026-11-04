@@ -449,11 +449,12 @@ def test_transcode_never_falls_back_to_cpu_when_gpu_path_fails(tmp_path: Path):
 
 def test_gpu_filter_routes_lut_through_vulkan_libplacebo(tmp_path: Path):
     graph = video._gpu_ffmpeg_filter(tmp_path / "look.cube")
-    assert "hwupload" in graph
+    assert "hwdownload,format=p010le" in graph
     assert "libplacebo=lut=" in graph
     assert "lut_type=native" in graph
     assert ":format=" not in graph
-    assert "hwdownload,format=p010le[outv]" in graph
+    assert "format=p010le,hwupload_cuda[outv]" in graph
+    assert "hwupload," not in graph
     assert "bt2020" in graph
     assert "arib-std-b67" in graph
 
@@ -486,8 +487,8 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
     }
 
     def fake_run(command, **kwargs):
-        assert "-init_hw_device" in command
-        assert "vulkan=vk:NVIDIA" in command
+        assert "-init_hw_device" not in command
+        assert "-filter_hw_device" not in command
         assert command[command.index("-hwaccel") + 1] == "cuda"
         assert command[command.index("-hwaccel_device") + 1] == "0"
         assert command[command.index("-gpu") + 1] == "0"
@@ -505,7 +506,7 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
     ):
         backend = video.transcode_hlg_video(source, lut, output, 0.5)
 
-    assert backend == "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo LUT + NVENC"
+    assert backend == "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo LUT + CUDA upload/NVENC"
     assert output.read_bytes() == b"gpu-mp4"
 
 
