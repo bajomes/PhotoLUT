@@ -60,7 +60,10 @@ def _gpu_video_stack_skip_reason() -> str | None:
             return "FFmpeg build lacks required GPU features: " + ", ".join(missing)
         return None
     except (OSError, subprocess.SubprocessError) as exc:
-        return f"Could not inspect FFmpeg GPU capabilities: {exc}"
+        # A broken or unresponsive FFmpeg probe is not evidence that a build
+        # feature is absent. Fail collection rather than silently skipping the
+        # hardware integration test and masking a damaged runtime environment.
+        raise RuntimeError(f"Could not inspect FFmpeg GPU capabilities: {exc}") from exc
 
 GPU_VIDEO_SKIP_REASON = _gpu_video_stack_skip_reason()
 pytestmark = pytest.mark.skipif(
