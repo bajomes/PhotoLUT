@@ -132,13 +132,17 @@ def _apply_lut_tile(image: np.ndarray, lut: CubeLUT) -> np.ndarray:
     c100 = t[b1, g0, r0]; c101 = t[b1, g0, r1]
     c110 = t[b1, g1, r0]; c111 = t[b1, g1, r1]
 
-    c00 = c000 + fr * (c001 - c000)
-    c01 = c010 + fr * (c011 - c010)
-    c10 = c100 + fr * (c101 - c100)
-    c11 = c110 + fr * (c111 - c110)
-    c0 = c00 + fg * (c01 - c00)
-    c1 = c10 + fg * (c11 - c10)
-    result = c0 + fb * (c1 - c0)
+    # Extreme but finite LUT entries can overflow during interpolation.
+    # The finite-result guard below turns that into a clear ValueError; keep
+    # NumPy's expected intermediate warnings from leaking into normal logs.
+    with np.errstate(over="ignore", invalid="ignore"):
+        c00 = c000 + fr * (c001 - c000)
+        c01 = c010 + fr * (c011 - c010)
+        c10 = c100 + fr * (c101 - c100)
+        c11 = c110 + fr * (c111 - c110)
+        c0 = c00 + fg * (c01 - c00)
+        c1 = c10 + fg * (c11 - c10)
+        result = c0 + fb * (c1 - c0)
     if not np.all(np.isfinite(result)):
         raise ValueError(
             "LUT interpolation produced non-finite values: the .cube table "
