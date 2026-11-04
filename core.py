@@ -256,6 +256,12 @@ def blend_intensity(graded: np.ndarray, original: np.ndarray, intensity: float) 
         raise ValueError("intensity must be between 0.0 and 1.0")
     if graded.shape != original.shape:
         raise ValueError("graded and original images must have identical shapes")
+    # Preserve exact slider endpoints rather than introducing a round-trip
+    # sRGB transfer-function rounding error when no blend is required.
+    if intensity == 0.0:
+        return np.clip(original, 0.0, 1.0).astype(np.float32, copy=True)
+    if intensity == 1.0:
+        return np.clip(graded, 0.0, 1.0).astype(np.float32, copy=True)
     graded_linear = _srgb_to_linear(graded)
     original_linear = _srgb_to_linear(original)
     mixed_linear = graded_linear * intensity + original_linear * (1.0 - intensity)
