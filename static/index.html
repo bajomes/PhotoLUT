@@ -103,7 +103,7 @@ button,input,select,textarea{letter-spacing:inherit}
 .video-preview-actions{margin-top:14px;align-items:center}
 .video-preview-actions .primary{width:auto;min-width:220px;margin:0;padding:11px 18px}
 .video-preview-actions .hint{font-size:10px}
-#videoLutInput{display:block;width:100%;max-width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--muted);font-size:11px}
+#videoLutInput{display:block;width:100%;max-width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--muted);font-size:11px}#videoLutProfile{display:block;width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit}
 #videoLutInput::file-selector-button{margin-right:10px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:#303226;color:var(--text);font:inherit;cursor:pointer}
 @media(max-width:760px){.topbar{height:auto;min-height:64px;flex-wrap:wrap;padding:10px 14px;gap:10px}.studio-nav{margin-left:auto}.studio-tab{padding:8px 10px;font-size:11px}.shell{padding:16px 12px 26px}.shell[data-mode="video"] .video-inspect-body{grid-template-columns:1fr;padding:14px;gap:14px}.video-preview-panel{margin:0 12px 14px;padding:11px}.video-compare-stage{min-height:190px;max-height:none}.video-preview-actions{align-items:stretch;flex-direction:column}.video-preview-actions .primary{width:100%}.video-compare-controls{flex-wrap:wrap}.video-compare-controls .time-readout{margin-left:auto}}
 </style>
@@ -178,12 +178,17 @@ button,input,select,textarea{letter-spacing:inherit}
         <input type="file" id="videoInspectInput" accept=".mp4,.mov,.m4v,.mkv,video/mp4,video/quicktime,video/x-m4v,video/x-matroska" hidden>
         <button class="primary" id="inspectVideoBtn" type="button" disabled>Inspect video metadata</button>
         <div class="progress-status" id="videoInspectStatus" role="status" aria-live="polite"></div>
-        <div class="mini-label"><label for="videoLutInput">CUSTOM HLG .CUBE LUT (OPTIONAL)</label></div>
+        <div class="mini-label"><label for="videoLutInput">CUSTOM .CUBE LUT (OPTIONAL)</label></div>
         <input type="file" id="videoLutInput" accept=".cube">
-        <p class="hint">Default: <b>Neutral HLG BT.2020</b> (identity LUT). It preserves the source look. For creative grading, load a LUT authored for HLG-encoded BT.2020 RGB; Rec.709 and camera-Log LUTs are not interchangeable. <a href="/luts/photolut-neutral-hlg-bt2020.cube" download>Download neutral LUT</a>.</p>
+        <div class="mini-label"><label for="videoLutProfile">LUT COLOR SPACE AND EXPORT PROFILE</label></div>
+        <select id="videoLutProfile">
+          <option value="hlg">HLG / BT.2020 — keep HDR (for HLG-authored LUTs)</option>
+          <option value="rec709">Rec.709 — export SDR (for standard creative LUTs such as Sedona)</option>
+        </select>
+        <p class="hint">Default: <b>Neutral HLG BT.2020</b> (identity LUT). Choose HLG for LUTs authored for HLG-encoded BT.2020 RGB. Choose Rec.709 for standard SDR creative LUTs: PhotoLUT will tone-map the HLG source to SDR BT.709 before applying the LUT, and the export will be SDR, not HDR. Camera-Log LUTs are not supported. <a href="/luts/photolut-neutral-hlg-bt2020.cube" download>Download neutral HLG LUT</a>.</p>
         <div class="range-head"><label for="videoLutIntensity">Video LUT intensity</label><strong id="videoLutIntensityValue">100%</strong></div>
         <input type="range" id="videoLutIntensity" min="0" max="100" value="100">
-        <p class="hint">The graded export remains HDR: HLG transfer, BT.2020 color, and 10-bit HEVC. Dolby Vision sources are not accepted for LUT re-encoding because their dynamic metadata cannot currently be preserved. HDR10/PQ inputs are inspected but LUT export is limited to HLG in this release.</p>
+        <p class="hint">Both export profiles use 10-bit HEVC. HLG mode preserves HLG/BT.2020 HDR; Rec.709 mode creates tone-mapped SDR/BT.709. Dolby Vision sources are not accepted because their dynamic metadata cannot currently be preserved. HDR10/PQ inputs are inspected but export is limited to HLG sources.</p>
               <button class="primary" id="processVideoBtn" type="button" disabled>Apply LUT & export 10-bit video</button>
         <div class="progress-status" id="videoProcessStatus" role="status" aria-live="polite"></div>
       </div>
@@ -546,10 +551,15 @@ $("downloadProcessedVideo").addEventListener("click",()=>{
 });
 let videoHlgConfirmed=false,videoDolbyVisionDetected=false;
 const videoLutInput=$("videoLutInput");
+const videoLutProfile=$("videoLutProfile");
 const videoLutIntensity=$("videoLutIntensity");
 const processVideoBtn=$("processVideoBtn");
 videoLutInput.addEventListener("change",()=>{
   processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoHlgConfirmed&&!videoDolbyVisionDetected);
+  $("videoProcessStatus").textContent="";
+  clearProcessedVideoPreview();
+});
+videoLutProfile.addEventListener("change",()=>{
   $("videoProcessStatus").textContent="";
   clearProcessedVideoPreview();
 });
@@ -558,22 +568,23 @@ videoLutIntensity.addEventListener("input",()=>{$("videoLutIntensityValue").text
 processVideoBtn.addEventListener("click",async()=>{
   const source=videoInspectInput.files?.[0];let lut=videoLutInput.files?.[0];if(!source)return;
   if(lut&&!lut.name.toLowerCase().endsWith(".cube")){$("videoProcessStatus").textContent="Choose a valid .cube LUT.";return;}
-  processVideoBtn.disabled=true;$("videoProcessStatus").textContent="Applying HDR HLG LUT and encoding 10-bit HEVC…";
+  const lutProfile=lut?videoLutProfile.value:"hlg";
+  processVideoBtn.disabled=true;$("videoProcessStatus").textContent=lutProfile==="hlg"?"Applying HLG LUT and encoding HDR 10-bit HEVC…":"Tone-mapping HLG to SDR BT.709, applying the Rec.709 LUT, and encoding 10-bit HEVC…";
   try{
     if(!lut){const preset=await fetch("/luts/photolut-neutral-hlg-bt2020.cube");if(!preset.ok)throw new Error("The built-in HLG LUT could not be loaded.");lut=await preset.blob();}
-    const form=new FormData();form.append("video_file",source);form.append("cube",lut,videoLutInput.files?.[0]?.name||"photolut-neutral-hlg-bt2020.cube");form.append("intensity",String(Number(videoLutIntensity.value)/100));
+    const form=new FormData();form.append("video_file",source);form.append("cube",lut,videoLutInput.files?.[0]?.name||"photolut-neutral-hlg-bt2020.cube");form.append("intensity",String(Number(videoLutIntensity.value)/100));form.append("lut_profile",lutProfile);
     const response=await fetch("/api/video/process",{method:"POST",body:form});
     if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.detail||"Video processing failed ("+response.status+")");}
     const blob=await response.blob();
     clearProcessedVideoPreview();
     originalVideoUrl=URL.createObjectURL(source);
     processedVideoUrl=URL.createObjectURL(blob);
-    processedVideoName=source.name.replace(/\.[^.]+$/,"")+"_photolut_hdr_hlg_10bit.mp4";
+    processedVideoName=source.name.replace(/\.[^.]+$/,"")+(lutProfile==="hlg"?"_photolut_hdr_hlg_10bit.mp4":"_photolut_sdr_rec709_10bit.mp4");
     videoBeforePreview.src=originalVideoUrl;
     processedVideoPreview.src=processedVideoUrl;
     $("videoPreviewPanel").hidden=false;
     const processingDevice=response.headers.get("X-PhotoLUT-Processing-Device")||"processing path not reported";
-    $("videoProcessStatus").textContent="HDR export complete · LUT processing: "+processingDevice+". Compare the original and graded video, then download when ready.";
+    $("videoProcessStatus").textContent=(lutProfile==="hlg"?"HDR HLG/BT.2020":"SDR BT.709")+" export complete · LUT processing: "+processingDevice+". Compare the original and graded video, then download when ready.";
   }catch(error){$("videoProcessStatus").textContent=error.message||String(error);}
   finally{processVideoBtn.disabled=!(videoInspectInput.files?.length&&videoHlgConfirmed&&!videoDolbyVisionDetected);}
 });
