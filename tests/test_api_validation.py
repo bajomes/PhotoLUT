@@ -120,6 +120,7 @@ def test_preview_cancellation_keeps_processing_slot_until_worker_exits(monkeypat
             app.preview(
                 UploadFile(filename="sample.nef", file=io.BytesIO(b"raw")),
                 UploadFile(filename="identity.cube", file=io.BytesIO(make_cube())),
+                "srgb",
             )
         )
         assert await asyncio.to_thread(started.wait, 2), "preview worker did not start"
