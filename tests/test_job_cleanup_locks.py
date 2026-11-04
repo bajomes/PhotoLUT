@@ -12,6 +12,7 @@ def test_cleanup_releases_per_job_output_lock_entry(tmp_path):
     job_dir.mkdir()
     jobs.update_job(job.id, status=jobs.JobStatus.DONE)
     now = time.time()
+    jobs.output_lock(job.id)
 
     with jobs._lock:
         jobs._jobs[job.id].finished_at = now - 120
