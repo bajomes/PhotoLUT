@@ -372,7 +372,6 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
             "-c:v", "hevc_nvenc", "-gpu", "0", "-preset", "p5", "-tune", "hq",
             "-profile:v", "main10", "-pix_fmt", "p010le",
             "-rc", "vbr", "-cq", "19", "-b:v", "0",
-            "-spatial_aq", "1", "-temporal_aq", "1",
         ] + output_metadata_args
         try:
             subprocess.run(

@@ -331,6 +331,10 @@ def test_transcode_invokes_ffmpeg_as_ten_bit_hlg_bt2020(tmp_path: Path):
     assert command[command.index("-pix_fmt") + 1] == "p010le"
     assert command[command.index("-preset") + 1] == "p5"
     assert command[command.index("-cq") + 1] == "19"
+    # AQ tuning flags are optional across FFmpeg/NVENC builds; do not force
+    # options that the installed encoder may not expose.
+    assert "-spatial_aq" not in command
+    assert "-temporal_aq" not in command
     assert command[command.index("-color_trc") + 1] == "arib-std-b67"
     assert command[command.index("-color_primaries") + 1] == "bt2020"
     assert command[command.index("-colorspace") + 1] == "bt2020nc"
