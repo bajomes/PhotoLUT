@@ -139,7 +139,48 @@ def test_delete_job_output_removes_files_and_invalidates_archives(tmp_path, monk
         assert result == {"removed": "sample.nef", "outputs": []}
         assert app.jobs.get_job(job_id).outputs == []
         assert not any((out_dir / name).exists() for name in names)
-        assert not any((out_dir / name).exists() for name in ["all.zip", "all-jpeg.zip", "all-tiff.zip"])
+        # Immutable ZIP snapshots are retained so an already-started
+        # FileResponse can finish streaming after an output is removed.
     finally:
         with app.jobs._lock:
             app.jobs._jobs.pop(job_id, None)
+
+def test_zip_snapshot_remains_valid_after_output_removal(tmp_path, monkeypatch):
+    job = app.jobs.create_job()
+    job_id = job.id
+    out_dir = tmp_path / job_id / "out"
+    out_dir.mkdir(parents=True)
+    (out_dir / "sample.jpg").write_bytes(b"jpeg-data")
+    (out_dir / "sample.tiff").write_bytes(b"tiff-data")
+    outputs = [{
+        "id": "0", "filename": "sample.nef",
+        "preview_before": f"/files/{job_id}/before.jpg",
+        "preview_after": f"/files/{job_id}/after.jpg",
+        "download_tiff": f"/files/{job_id}/sample.tiff",
+        "download_jpeg": f"/files/{job_id}/sample.jpg",
+    }]
+    app.jobs.update_job(job_id, status=app.jobs.JobStatus.DONE, outputs=outputs)
+    monkeypatch.setattr(app, "WORK_DIR", tmp_path)
+
+    try:
+        first_response = app.download_zip(job_id, "all")
+        first_archive = first_response.path
+        with zipfile.ZipFile(first_archive) as archive:
+            assert sorted(archive.namelist()) == ["sample.jpg", "sample.tiff"]
+            assert archive.testzip() is None
+
+        app.delete_job_output(job_id, "0")
+        assert first_archive.is_file()
+        with zipfile.ZipFile(first_archive) as archive:
+            assert sorted(archive.namelist()) == ["sample.jpg", "sample.tiff"]
+            assert archive.testzip() is None
+
+        second_response = app.download_zip(job_id, "all")
+        assert second_response.path != first_archive
+        with zipfile.ZipFile(second_response.path) as archive:
+            assert archive.namelist() == []
+            assert archive.testzip() is None
+    finally:
+        with app.jobs._lock:
+            app.jobs._jobs.pop(job_id, None)
+            app.jobs._output_locks.pop(job_id, None)
