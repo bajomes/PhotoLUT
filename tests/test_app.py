@@ -120,11 +120,13 @@ def test_download_zip_is_safe_for_concurrent_requests(tmp_path, monkeypatch):
                     "sample_lut.jpg", "sample_lut.tiff"
                 ]
                 assert archive.testzip() is None
+            app.jobs.release_output_lease(job_id)
         assert not list(out_dir.glob(".*.tmp"))
     finally:
         with app.jobs._lock:
             app.jobs._jobs.pop(job_id, None)
             app.jobs._output_locks.pop(job_id, None)
+            app.jobs._active_output_leases.pop(job_id, None)
 
 
 def test_delete_job_output_removes_files_and_invalidates_archives(tmp_path, monkeypatch):
@@ -180,6 +182,9 @@ def test_zip_snapshot_remains_valid_after_output_removal(tmp_path, monkeypatch):
         with zipfile.ZipFile(first_archive) as archive:
             assert sorted(archive.namelist()) == ["sample.jpg", "sample.tiff"]
             assert archive.testzip() is None
+        # The route handler is called directly here, so simulate the response
+        # finishing and releasing its streaming lease.
+        app.jobs.release_output_lease(job_id)
 
         app.delete_job_output(job_id, "0")
         assert first_archive.is_file()
@@ -192,7 +197,9 @@ def test_zip_snapshot_remains_valid_after_output_removal(tmp_path, monkeypatch):
         with zipfile.ZipFile(second_response.path) as archive:
             assert archive.namelist() == []
             assert archive.testzip() is None
+        app.jobs.release_output_lease(job_id)
     finally:
         with app.jobs._lock:
             app.jobs._jobs.pop(job_id, None)
             app.jobs._output_locks.pop(job_id, None)
+            app.jobs._active_output_leases.pop(job_id, None)

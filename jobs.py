@@ -42,6 +42,7 @@ class JobState:
 _jobs: dict[str, JobState] = {}
 _lock = threading.Lock()
 _output_locks: dict[str, threading.RLock] = {}
+_active_output_leases: dict[str, int] = {}
 
 
 def output_lock(job_id: str) -> threading.RLock:
@@ -51,6 +52,31 @@ def output_lock(job_id: str) -> threading.RLock:
         if job_id not in _jobs:
             return threading.RLock()
         return _output_locks.setdefault(job_id, threading.RLock())
+
+
+def acquire_output_lease(job_id: str) -> bool:
+    """Keep a completed job directory alive until a response has finished streaming."""
+    with _lock:
+        state = _jobs.get(job_id)
+        if state is None or state.status != JobStatus.DONE:
+            return False
+        _active_output_leases[job_id] = _active_output_leases.get(job_id, 0) + 1
+        return True
+
+
+def release_output_lease(job_id: str) -> None:
+    """Release one response lease; safe to call from a response background task."""
+    with _lock:
+        count = _active_output_leases.get(job_id, 0)
+        if count <= 1:
+            _active_output_leases.pop(job_id, None)
+        else:
+            _active_output_leases[job_id] = count - 1
+
+
+def has_output_leases(job_id: str) -> bool:
+    with _lock:
+        return _active_output_leases.get(job_id, 0) > 0
 
 
 def get_job_outputs_snapshot(job_id: str) -> tuple[JobStatus, list[dict]] | None:
@@ -135,6 +161,7 @@ def _cleanup_once(work_dir: Path, max_age: int, now: float | None = None) -> lis
                     or state.status not in _TERMINAL_STATUSES
                     or state.finished_at is None
                     or now - state.finished_at <= max_age
+                    or _active_output_leases.get(job_id, 0) > 0
                 ):
                     continue
                 _jobs.pop(job_id, None)
