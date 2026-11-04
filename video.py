@@ -392,7 +392,7 @@ def transcode_hlg_video(
             "CPU fallback is disabled to prevent unexpectedly high CPU load."
         )
 
-    baked_lut = output.with_name("photolut-intensity-hlg.cube")
+    baked_lut = output.with_name(f"photolut-intensity-{lut_profile}.cube")
 
     if lut_profile == "hlg":
         output_color_args = [
@@ -443,7 +443,7 @@ def transcode_hlg_video(
             output.unlink(missing_ok=True)
             detail = (exc.stderr or exc.stdout or "").strip()
             raise RuntimeError(
-                "GPU-only HDR export failed. CPU processing was not started. "
+                "GPU-only video export failed. CPU processing was not started. "
                 "NVIDIA Vulkan/CUDA/NVENC diagnostics: "
                 + (detail[-2400:] or "No FFmpeg diagnostic was returned.")
             ) from exc
@@ -562,9 +562,10 @@ async def process_uploaded_video(
             background=background_tasks,
             headers={
                 "X-PhotoLUT-HDR-Verified": "true" if lut_profile == "hlg" else "false",
-                "X-PhotoLUT-HDR-Transfer": "arib-std-b67" if lut_profile == "hlg" else "bt709",
+                "X-PhotoLUT-Output-Transfer": "arib-std-b67" if lut_profile == "hlg" else "bt709",
                 "X-PhotoLUT-Output-Profile": lut_profile,
                 "X-PhotoLUT-Processing-Device": processing_device,
+                **({"X-PhotoLUT-HDR-Transfer": "arib-std-b67"} if lut_profile == "hlg" else {}),
             },
         )
     except BaseException:
