@@ -14,6 +14,7 @@ That behavior is pinned here so future dtype changes are caught.
 from __future__ import annotations
 
 from pathlib import Path
+import warnings
 
 import numpy as np
 import pytest
@@ -62,8 +63,11 @@ def test_red_axis_overflow_raises_value_error(tmp_path):
     """Repro: before the guard this silently returned an all-NaN image."""
     lut = core.parse_cube(_red_axis_overflow_cube(tmp_path))
     image = np.full((64, 64, 3), 0.5, dtype=np.float32)
-    with pytest.raises(ValueError, match="non-finite"):
-        core.apply_lut(image, lut)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(ValueError, match="non-finite"):
+            core.apply_lut(image, lut)
+    assert not [warning for warning in caught if issubclass(warning.category, RuntimeWarning)]
 
 
 def test_red_axis_overflow_raises_even_at_corner_pixels(tmp_path):
