@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import hashlib
+import json
 import os
 import re
 import shutil
@@ -386,25 +388,27 @@ def job_status(job_id: str) -> dict:
 
 @app.delete("/api/jobs/{job_id}/outputs/{output_id}")
 def delete_job_output(job_id: str, output_id: str) -> dict:
-    """Remove one finished photo and all of its generated files."""
+    """Remove one finished photo without racing an archive build."""
     if not job_id.isalnum() or not output_id.isdecimal():
         raise HTTPException(400, "Invalid request")
-    removed = jobs.remove_job_output(job_id, output_id)
-    if removed is None:
-        raise HTTPException(404, "Export item not found")
-    out_dir = (WORK_DIR / job_id / "out").resolve()
-    for key in ("preview_before", "preview_after", "download_tiff", "download_jpeg"):
-        url = removed.get(key)
-        if not url:
-            continue
-        name = Path(url).name
-        path = (out_dir / name).resolve()
-        if path.parent == out_dir:
-            path.unlink(missing_ok=True)
-    for archive_name in ("all.zip", "all-jpeg.zip", "all-tiff.zip"):
-        (out_dir / archive_name).unlink(missing_ok=True)
-    job = jobs.get_job(job_id)
-    return {"removed": removed.get("filename", ""), "outputs": job.outputs if job else []}
+    with jobs.output_lock(job_id):
+        removed = jobs.remove_job_output(job_id, output_id)
+        if removed is None:
+            raise HTTPException(404, "Export item not found")
+        out_dir = (WORK_DIR / job_id / "out").resolve()
+        for key in ("preview_before", "preview_after", "download_tiff", "download_jpeg"):
+            url = removed.get(key)
+            if not url:
+                continue
+            name = Path(url).name
+            path = (out_dir / name).resolve()
+            if path.parent == out_dir:
+                path.unlink(missing_ok=True)
+        snapshot = jobs.get_job_outputs_snapshot(job_id)
+        return {
+            "removed": removed.get("filename", ""),
+            "outputs": snapshot[1] if snapshot else [],
+        }
 
 
 @app.get("/files/{job_id}/all.zip")
@@ -415,46 +419,64 @@ def download_zip(
     if not job_id.isalnum():
         raise HTTPException(400, "Invalid job ID")
     archive_options = {
-        "jpeg": (("jpeg",), "all-jpeg.zip", "photolut_jpeg_results.zip"),
-        "tiff": (("tiff",), "all-tiff.zip", "photolut_tiff_results.zip"),
-        "all": (("tiff", "jpeg"), "all.zip", "photolut_results.zip"),
+        "jpeg": (("jpeg",), "photolut_jpeg_results"),
+        "tiff": (("tiff",), "photolut_tiff_results"),
+        "all": (("tiff", "jpeg"), "photolut_results"),
     }
     if archive_format not in archive_options:
         raise HTTPException(400, "Unsupported export format. Choose jpeg, tiff, or all.")
 
-    job = jobs.get_job(job_id)
-    if not job or job.status != jobs.JobStatus.DONE:
-        raise HTTPException(404, "Job results are not ready yet")
-
-    keys, archive_name, download_name = archive_options[archive_format]
+    keys, download_name = archive_options[archive_format]
     out_dir = (WORK_DIR / job_id / "out").resolve()
-    zip_path = out_dir / archive_name
 
-    if not zip_path.exists():
-        fd, temp_name = tempfile.mkstemp(
-            prefix=f".{archive_name}.", suffix=".tmp", dir=out_dir
-        )
-        os.close(fd)
-        temp_path = Path(temp_name)
-        try:
-            with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                for output in job.outputs:
-                    for key in keys:
-                        url = output.get(f"download_{key}")
-                        if not url:
-                            continue
-                        name = Path(url).name
-                        path = out_dir / name
-                        if path.is_file():
-                            zf.write(path, name)
-            # Publish only a complete archive. Concurrent builders each use a
-            # unique temporary file; atomic replacement prevents partial ZIPs.
-            os.replace(temp_path, zip_path)
-        finally:
-            temp_path.unlink(missing_ok=True)
+    # Serialize against deletion until every source file has been copied into
+    # an immutable, manifest-addressed archive. Older archives are retained:
+    # FileResponse streams after this function returns, so unlinking an archive
+    # during a later DELETE could otherwise break an in-flight download.
+    with jobs.output_lock(job_id):
+        snapshot = jobs.get_job_outputs_snapshot(job_id)
+        if not snapshot or snapshot[0] != jobs.JobStatus.DONE:
+            raise HTTPException(404, "Job results are not ready yet")
+        outputs = snapshot[1]
+        manifest = [
+            {f"download_{key}": output.get(f"download_{key}") for key in keys}
+            | {"id": output.get("id")}
+            for output in outputs
+        ]
+        digest = hashlib.sha256(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()[:16]
+        archive_name = f"{download_name}-{digest}.zip"
+        zip_path = out_dir / archive_name
 
-    return FileResponse(zip_path, filename=download_name,
-                        media_type="application/zip")
+        if not zip_path.exists():
+            fd, temp_name = tempfile.mkstemp(
+                prefix=f".{archive_name}.", suffix=".tmp", dir=out_dir
+            )
+            os.close(fd)
+            temp_path = Path(temp_name)
+            try:
+                with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for output in outputs:
+                        for key in keys:
+                            url = output.get(f"download_{key}")
+                            if not url:
+                                continue
+                            name = Path(url).name
+                            path = (out_dir / name).resolve()
+                            if path.parent == out_dir and path.is_file():
+                                zf.write(path, name)
+                # Publish a complete archive atomically. Its content-addressed
+                # name is never reused for a different output manifest.
+                os.replace(temp_path, zip_path)
+            finally:
+                temp_path.unlink(missing_ok=True)
+
+    return FileResponse(
+        zip_path,
+        filename=f"{download_name}.zip",
+        media_type="application/zip",
+    )
 
 
 @app.get("/files/{job_id}/{name}")
