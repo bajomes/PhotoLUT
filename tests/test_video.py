@@ -92,6 +92,16 @@ def test_normalize_identifies_portrait_4k30():
     assert result["is_4k30_or_higher"] is True
 
 
+def test_normalize_accepts_4k60_as_4k30_or_higher():
+    payload = json.loads(json.dumps(HLG_PAYLOAD))
+    payload["streams"][0].update(avg_frame_rate="60000/1001", r_frame_rate="60/1")
+
+    result = video.normalize_probe_data(payload)
+
+    assert result["frame_rate_numeric"] == pytest.approx(59.94, abs=0.01)
+    assert result["is_4k30_or_higher"] is True
+
+
 def test_normalize_rejects_portrait_video_below_4k_dimensions():
     payload = json.loads(json.dumps(HLG_PAYLOAD))
     stream = payload["streams"][0]
