@@ -134,3 +134,37 @@ def test_encoder_timeout_removes_partial_output(tmp_path: Path, monkeypatch):
     with pytest.raises(RuntimeError, match="timed out"):
         hdr_photo.export_ultrahdr(source, destination)
     assert not destination.exists()
+
+
+def test_rejects_tiff_over_8_megapixels(tmp_path: Path):
+    source = tmp_path / "too-large.tiff"
+    # A tiny on-disk tiled TIFF with oversized dimensions is unnecessary here;
+    # exercise the public dimension guard before decoding pixel data.
+    class FakePage:
+        bitspersample = 16
+        photometric = 2
+        planarconfig = 1
+        sampleformat = 1
+        samplesperpixel = 3
+        imagewidth = 3000
+        imagelength = 3000
+        tags = {}
+
+        def asarray(self):
+            raise AssertionError("oversized TIFF must be rejected before decoding")
+
+    class FakeTiff:
+        pages = [FakePage()]
+
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+
+    source.write_bytes(b"tiff")
+    import tifffile
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(tifffile, "TiffFile", lambda _path: FakeTiff())
+    try:
+        with pytest.raises(ValueError, match="8 megapixel"):
+            hdr_photo._load_tiff(source)
+    finally:
+        monkeypatch.undo()
