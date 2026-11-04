@@ -78,6 +78,7 @@ def has_output_leases(job_id: str) -> bool:
     with _lock:
         return _active_output_leases.get(job_id, 0) > 0
 
+
 def get_job_outputs_snapshot(job_id: str) -> tuple[JobStatus, list[dict]] | None:
     """Return a detached output manifest while holding the registry lock."""
     import copy
