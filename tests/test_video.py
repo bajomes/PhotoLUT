@@ -51,6 +51,22 @@ def test_normalize_identifies_pq_hdr10_and_4k30():
     assert result["recommended_path"] == "inspect_color_metadata"
 
 
+def test_normalize_identifies_portrait_4k30():
+    payload = json.loads(json.dumps(HLG_PAYLOAD))
+    stream = payload["streams"][0]
+    stream.update(width=2160, height=3840, avg_frame_rate="30/1")
+    result = video.normalize_probe_data(payload)
+    assert result["is_4k30_or_higher"] is True
+
+
+def test_normalize_rejects_portrait_video_below_4k_dimensions():
+    payload = json.loads(json.dumps(HLG_PAYLOAD))
+    stream = payload["streams"][0]
+    stream.update(width=1440, height=2560, avg_frame_rate="30/1")
+    result = video.normalize_probe_data(payload)
+    assert result["is_4k30_or_higher"] is False
+
+
 def test_normalize_does_not_call_sdr_hdr_or_force_upscale():
     payload = json.loads(json.dumps(HLG_PAYLOAD))
     stream = payload["streams"][0]
