@@ -23,7 +23,7 @@ def _gpu_video_stack_available() -> bool:
         return (
             "hevc_nvenc" in encoders.stdout + encoders.stderr
             and "libplacebo" in filters.stdout + filters.stderr
-            and re.search(r"^\\s*lut\\s+<", help_text, re.MULTILINE) is not None
+            and re.search(r"^\s*lut\s+<", help_text, re.MULTILINE) is not None
         )
     except (OSError, subprocess.SubprocessError):
         return False
