@@ -262,10 +262,18 @@ def blend_intensity(graded: np.ndarray, original: np.ndarray, intensity: float) 
         return np.clip(original, 0.0, 1.0).astype(np.float32, copy=True)
     if intensity == 1.0:
         return np.clip(graded, 0.0, 1.0).astype(np.float32, copy=True)
-    graded_linear = _srgb_to_linear(graded)
-    original_linear = _srgb_to_linear(original)
-    mixed_linear = graded_linear * intensity + original_linear * (1.0 - intensity)
-    return _linear_to_srgb(mixed_linear)
+    # Bound temporary allocations for high-resolution RAW images. The final
+    # float32 output is full-sized, but transfer-function and blend buffers
+    # are limited to 512 rows at a time.
+    result = np.empty(graded.shape, dtype=np.float32)
+    tile_rows = 512
+    for y0 in range(0, graded.shape[0], tile_rows):
+        y1 = min(y0 + tile_rows, graded.shape[0])
+        graded_linear = _srgb_to_linear(graded[y0:y1])
+        original_linear = _srgb_to_linear(original[y0:y1])
+        mixed_linear = graded_linear * intensity + original_linear * (1.0 - intensity)
+        result[y0:y1] = _linear_to_srgb(mixed_linear)
+    return result
 
 
 def srgb_icc_profile() -> bytes:
