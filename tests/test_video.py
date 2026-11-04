@@ -328,7 +328,7 @@ def test_transcode_invokes_ffmpeg_as_ten_bit_hlg_bt2020(tmp_path: Path):
     command = run.call_args.args[0]
     assert command[command.index("-c:v") + 1] == "hevc_nvenc"
     assert command[command.index("-profile:v") + 1] == "main10"
-    assert command[command.index("-pix_fmt") + 1] == "p010le"
+    assert "-pix_fmt" not in command
     assert command[command.index("-preset") + 1] == "p5"
     assert command[command.index("-cq") + 1] == "19"
     # AQ tuning flags are optional across FFmpeg/NVENC builds; do not force
@@ -492,6 +492,7 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
         assert command[command.index("-hwaccel") + 1] == "cuda"
         assert command[command.index("-hwaccel_device") + 1] == "0"
         assert command[command.index("-gpu") + 1] == "0"
+        assert "-pix_fmt" not in command
         assert command[command.index("-hwaccel_output_format") + 1] == "cuda"
         assert command.index("-hwaccel") < command.index("-i")
         graph = command[command.index("-filter_complex") + 1]
