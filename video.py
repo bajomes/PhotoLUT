@@ -218,8 +218,17 @@ async def inspect_uploaded_video(video_file: UploadFile) -> dict[str, Any]:
                     output.write(chunk)
             if size == 0:
                 raise HTTPException(400, "The uploaded video is empty.")
+            inspection_task = asyncio.create_task(asyncio.to_thread(inspect_video, path))
             try:
-                metadata = await asyncio.to_thread(inspect_video, path)
+                metadata = await asyncio.shield(inspection_task)
+            except asyncio.CancelledError:
+                try:
+                    await inspection_task
+                except Exception:
+                    # Preserve request cancellation; the source file must stay
+                    # available until FFprobe has stopped reading it.
+                    pass
+                raise
             except ValueError as exc:
                 raise HTTPException(422, str(exc)) from exc
             except RuntimeError as exc:
