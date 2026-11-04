@@ -10,28 +10,62 @@ import pytest
 import video
 
 
-def _gpu_video_stack_available() -> bool:
+def _gpu_video_stack_skip_reason() -> str | None:
+    """Skip only when FFmpeg lacks required compiled features.
+
+    If the features are present, the integration test must execute the real
+    CUDA -> Vulkan/libplacebo -> NVENC pipeline. A missing or unusable device
+    is then a test failure, not a skip.
+    """
     ffmpeg = shutil.which("ffmpeg")
     ffprobe = shutil.which("ffprobe")
     if not ffmpeg or not ffprobe:
-        return False
+        return "GPU integration requires ffmpeg and ffprobe"
+
     try:
-        encoders = subprocess.run([ffmpeg, "-hide_banner", "-encoders"], check=True, capture_output=True, text=True, timeout=15)
-        filters = subprocess.run([ffmpeg, "-hide_banner", "-filters"], check=True, capture_output=True, text=True, timeout=15)
-        help_result = subprocess.run([ffmpeg, "-hide_banner", "-h", "filter=libplacebo"], capture_output=True, text=True, timeout=15)
-        help_text = help_result.stdout + help_result.stderr
-        return (
-            "hevc_nvenc" in encoders.stdout + encoders.stderr
-            and "libplacebo" in filters.stdout + filters.stderr
-            and re.search(r"^\s*lut\s+<", help_text, re.MULTILINE) is not None
+        encoders = subprocess.run(
+            [ffmpeg, "-hide_banner", "-encoders"],
+            check=True, capture_output=True, text=True, timeout=15,
         )
-    except (OSError, subprocess.SubprocessError):
-        return False
+        filters = subprocess.run(
+            [ffmpeg, "-hide_banner", "-filters"],
+            check=True, capture_output=True, text=True, timeout=15,
+        )
+        help_result = subprocess.run(
+            [ffmpeg, "-hide_banner", "-h", "filter=libplacebo"],
+            check=False, capture_output=True, text=True, timeout=15,
+        )
+        hwaccels = subprocess.run(
+            [ffmpeg, "-hide_banner", "-hwaccels"],
+            check=True, capture_output=True, text=True, timeout=15,
+        )
+        devices = subprocess.run(
+            [ffmpeg, "-hide_banner", "-init_hw_device", "list"],
+            check=False, capture_output=True, text=True, timeout=15,
+        )
+        help_text = help_result.stdout + help_result.stderr
+        device_text = devices.stdout + devices.stderr
+        missing = []
+        if "hevc_nvenc" not in encoders.stdout + encoders.stderr:
+            missing.append("hevc_nvenc")
+        if not re.search(r"\\blibplacebo\\b", filters.stdout + filters.stderr):
+            missing.append("libplacebo")
+        if re.search(r"^\\s*lut\\s+<", help_text, re.MULTILINE) is None:
+            missing.append("libplacebo custom .cube LUT option")
+        if not re.search(r"^cuda$", hwaccels.stdout + hwaccels.stderr, re.MULTILINE):
+            missing.append("CUDA hwaccel")
+        if not re.search(r"^\\s*vulkan\\s*$", device_text, re.MULTILINE | re.IGNORECASE):
+            missing.append("Vulkan hardware device support")
+        if missing:
+            return "FFmpeg build lacks required GPU features: " + ", ".join(missing)
+        return None
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"Could not inspect FFmpeg GPU capabilities: {exc}"
 
-
+GPU_VIDEO_SKIP_REASON = _gpu_video_stack_skip_reason()
 pytestmark = pytest.mark.skipif(
-    not _gpu_video_stack_available(),
-    reason="GPU integration test requires FFmpeg with NVENC and libplacebo custom .cube LUT support",
+    GPU_VIDEO_SKIP_REASON is not None,
+    reason=GPU_VIDEO_SKIP_REASON or "Required FFmpeg GPU features are unavailable",
 )
 
 
@@ -83,7 +117,9 @@ def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
     assert source_metadata["hlg_metadata_complete"] is True
     assert source_metadata["bit_depth"] == 10
 
-    video.transcode_hlg_video(source, lut, output, 0.65)
+    backend = video.transcode_hlg_video(source, lut, output, 0.65)
+    assert backend.startswith("GPU decode (NVDEC) + Vulkan/libplacebo LUT")
+    assert backend.endswith("+ NVENC")
 
     result = video.inspect_video(output)
     assert output.is_file() and output.stat().st_size > 0
