@@ -398,7 +398,7 @@ def test_intensity_lut_preserves_custom_domain_for_libplacebo(tmp_path: Path):
         for green in (0.1, 0.9):
             for red in (0.2, 0.8):
                 lines.append(f"{red} {green} {blue}")
-    source.write_text("\\n".join(lines) + "\\n", encoding="ascii")
+    source.write_text("\n".join(lines) + "\n", encoding="ascii")
 
     parsed = video.core.parse_cube(source)
     baked = tmp_path / "baked-custom-domain.cube"
