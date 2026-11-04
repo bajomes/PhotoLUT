@@ -228,7 +228,7 @@ def test_transcode_removes_partial_output_when_ffmpeg_fails(tmp_path: Path):
         run.side_effect = fake_run
         with pytest.raises(RuntimeError, match="GPU-only HDR export failed"):
             video.transcode_hlg_video(source, lut, output, 1.0)
-    assert run.call_count == 4
+    assert run.call_count == 1
     assert not output.exists()
 
 
@@ -312,7 +312,7 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
 
     def fake_run(command, **kwargs):
         assert "-init_hw_device" in command
-        assert "vulkan=vk:0" in command
+        assert "vulkan=vk:NVIDIA" in command
         assert command[command.index("-hwaccel") + 1] == "cuda"
         assert command[command.index("-hwaccel_output_format") + 1] == "cuda"
         assert command.index("-hwaccel") < command.index("-i")
@@ -328,7 +328,7 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
     ):
         backend = video.transcode_hlg_video(source, lut, output, 0.5)
 
-    assert backend.startswith("GPU decode (NVDEC) + Vulkan/libplacebo LUT") and backend.endswith("+ NVENC")
+    assert backend == "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo LUT + NVENC"
     assert output.read_bytes() == b"gpu-mp4"
 
 
