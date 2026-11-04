@@ -85,7 +85,9 @@ jobs:
           docker exec photolut-ci ffmpeg -hide_banner -filters 2>&1 | grep libplacebo >/dev/null
           docker exec photolut-ci ffmpeg -hide_banner -h filter=libplacebo 2>&1 | grep 'lut ' >/dev/null
           docker exec photolut-ci ffmpeg -hide_banner -encoders 2>&1 | grep 'hevc_nvenc' >/dev/null
-          docker exec photolut-ci ffmpeg -hide_banner -hwaccels 2>&1 | grep '^cuda          grep -q 'id="previewCompare"' /tmp/photolut-index.html
+          docker exec photolut-ci ffmpeg -hide_banner -hwaccels 2>&1 | grep '^cuda$' >/dev/null
+          docker exec photolut-ci ffmpeg -hide_banner -init_hw_device list 2>&1 | grep 'vulkan' >/dev/null
+          grep -q 'id="previewCompare"' /tmp/photolut-index.html
           grep -q 'id="videoCompareStage"' /tmp/photolut-index.html
           grep -q 'id="videoCompareSeek"' /tmp/photolut-index.html
           grep -q 'data-studio-mode="photos"' /tmp/photolut-index.html
