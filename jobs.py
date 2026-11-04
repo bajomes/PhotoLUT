@@ -106,30 +106,42 @@ def remove_job_output(job_id: str, output_id: str) -> dict | None:
 
 
 def _cleanup_once(work_dir: Path, max_age: int, now: float | None = None) -> list[str]:
-    """Remove only completed/failed jobs whose retention period has elapsed.
+    """Remove expired terminal jobs while holding their output locks.
 
-    Active jobs are never removed just because they have been running longer
-    than max_age. Registry entries are removed under the lock before their
-    directories are deleted, avoiding a race with status updates.
-
-    Directories left behind by a previous process (after a restart or crash)
-    are removed too; see _remove_orphan_job_dirs.
+    Acquiring the per-job lock before removing state/files prevents cleanup
+    from racing archive creation or output deletion. Expired lock entries are
+    removed from the registry as part of the same operation.
     """
     now = time.time() if now is None else now
     with _lock:
-        expired = [
-            job_id
+        candidates = [
+            (job_id, _output_locks.setdefault(job_id, threading.RLock()))
             for job_id, state in _jobs.items()
             if state.status in _TERMINAL_STATUSES
             and state.finished_at is not None
             and now - state.finished_at > max_age
         ]
         known_ids = set(_jobs)
-        for job_id in expired:
-            _jobs.pop(job_id, None)
 
-    for job_id in expired:
-        shutil.rmtree(work_dir / job_id, ignore_errors=True)
+    expired: list[str] = []
+    for job_id, job_lock in candidates:
+        with job_lock:
+            with _lock:
+                state = _jobs.get(job_id)
+                # Recheck after waiting: a concurrent status update may have
+                # made this job active again.
+                if (
+                    state is None
+                    or state.status not in _TERMINAL_STATUSES
+                    or state.finished_at is None
+                    or now - state.finished_at <= max_age
+                ):
+                    continue
+                _jobs.pop(job_id, None)
+                if _output_locks.get(job_id) is job_lock:
+                    _output_locks.pop(job_id, None)
+            shutil.rmtree(work_dir / job_id, ignore_errors=True)
+            expired.append(job_id)
 
     orphans = _remove_orphan_job_dirs(work_dir, known_ids, max_age, now)
     return expired + orphans
