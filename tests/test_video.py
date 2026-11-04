@@ -429,7 +429,8 @@ def test_builtin_neutral_hlg_lut_is_valid_and_bounded():
     assert parsed.table.max() <= 1.0
 
 
-def test_transcode_never_falls_back_to_cpu_when_gpu_path_fails(tmp_path: Path):
+@pytest.mark.parametrize("lut_profile", ["hlg", "rec709"])
+def test_transcode_never_falls_back_to_cpu_when_gpu_path_fails(tmp_path: Path, lut_profile: str):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
     lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
@@ -441,7 +442,7 @@ def test_transcode_never_falls_back_to_cpu_when_gpu_path_fails(tmp_path: Path):
         side_effect=subprocess.CalledProcessError(1, ["ffmpeg"], stderr="Vulkan device unavailable"),
     ) as run:
         with pytest.raises(RuntimeError, match="CPU processing was not started"):
-            video.transcode_hlg_video(source, lut, output, 1.0)
+            video.transcode_hlg_video(source, lut, output, 1.0, lut_profile)
 
     assert run.call_count == 1
     assert not output.exists()
