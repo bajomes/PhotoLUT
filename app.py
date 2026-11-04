@@ -221,6 +221,11 @@ def _process_job_sync(
                 "download_jpeg": f"/files/{job_id}/{paths['jpeg'].name}",
             })
 
+            # Release the previous full-resolution RGB buffers before decoding
+            # the next RAW file. Python otherwise keeps these loop locals alive
+            # while the next decode allocates its own large image buffers.
+            del graded, image
+
         jobs.update_job(job_id,
                         status=jobs.JobStatus.DONE,
                         progress=100,
