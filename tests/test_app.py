@@ -116,29 +116,30 @@ def test_download_zip_is_safe_for_concurrent_requests(tmp_path, monkeypatch):
 
 
 def test_delete_job_output_removes_files_and_invalidates_archives(tmp_path, monkeypatch):
-    job_id = "a" * 32
+    job = app.jobs.create_job()
+    job_id = job.id
     out_dir = tmp_path / job_id / "out"
     out_dir.mkdir(parents=True)
     names = ["before.jpg", "after.jpg", "sample.tiff", "sample.jpg"]
     for name in names + ["all.zip", "all-jpeg.zip", "all-tiff.zip"]:
         (out_dir / name).write_bytes(b"data")
-    job = SimpleNamespace(
-        id=job_id,
-        status=app.jobs.JobStatus.DONE,
-        outputs=[{
-            "id": "0", "filename": "sample.nef",
-            "preview_before": f"/files/{job_id}/before.jpg",
-            "preview_after": f"/files/{job_id}/after.jpg",
-            "download_tiff": f"/files/{job_id}/sample.tiff",
-            "download_jpeg": f"/files/{job_id}/sample.jpg",
-        }],
-    )
+    outputs = [{
+        "id": "0", "filename": "sample.nef",
+        "preview_before": f"/files/{job_id}/before.jpg",
+        "preview_after": f"/files/{job_id}/after.jpg",
+        "download_tiff": f"/files/{job_id}/sample.tiff",
+        "download_jpeg": f"/files/{job_id}/sample.jpg",
+    }]
+    app.jobs.update_job(job_id, status=app.jobs.JobStatus.DONE, outputs=outputs)
     monkeypatch.setattr(app, "WORK_DIR", tmp_path)
-    monkeypatch.setattr(app.jobs, "remove_job_output", lambda _job_id, _output_id: job.outputs.pop(0))
-    monkeypatch.setattr(app.jobs, "get_job", lambda _job_id: job)
 
-    result = app.delete_job_output(job_id, "0")
+    try:
+        result = app.delete_job_output(job_id, "0")
 
-    assert result == {"removed": "sample.nef", "outputs": []}
-    assert not any((out_dir / name).exists() for name in names)
-    assert not any((out_dir / name).exists() for name in ["all.zip", "all-jpeg.zip", "all-tiff.zip"])
+        assert result == {"removed": "sample.nef", "outputs": []}
+        assert app.jobs.get_job(job_id).outputs == []
+        assert not any((out_dir / name).exists() for name in names)
+        assert not any((out_dir / name).exists() for name in ["all.zip", "all-jpeg.zip", "all-tiff.zip"])
+    finally:
+        with app.jobs._lock:
+            app.jobs._jobs.pop(job_id, None)
