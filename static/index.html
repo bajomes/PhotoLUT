@@ -358,13 +358,15 @@ function renderResults(outputs,jobId){
     const remove=document.createElement("button");remove.type="button";remove.className="remove-result";remove.textContent="Remove";remove.setAttribute("aria-label","Remove "+out.filename+" from this export");
     remove.addEventListener("click",async()=>{
       if(remove.disabled)return;
-      remove.disabled=true;remove.textContent="Removing…";
+      gallery.querySelectorAll(".remove-result").forEach(button=>button.disabled=true);
+      remove.textContent="Removing…";
       try{
         const response=await fetch("/api/jobs/"+encodeURIComponent(jobId)+"/outputs/"+encodeURIComponent(out.id),{method:"DELETE"});
         const data=await response.json().catch(()=>({}));
         if(!response.ok)throw new Error(data.detail||"Could not remove this export item.");
         card.remove();
         const remaining=Array.isArray(data.outputs)?data.outputs:[];
+        gallery.querySelectorAll(".remove-result").forEach(button=>button.disabled=false);
         $("summary").textContent=remaining.length+" photos available for export.";
         $("dlZip").hidden=remaining.length===0;
         if(remaining.length){
@@ -378,7 +380,7 @@ function renderResults(outputs,jobId){
           $("previewBefore").removeAttribute("src");$("previewAfter").removeAttribute("src");
           $("previewFilename").textContent="";
         }
-      }catch(error){remove.disabled=false;remove.textContent="Remove";showError(error.message||String(error));}
+      }catch(error){gallery.querySelectorAll(".remove-result").forEach(button=>button.disabled=false);remove.textContent="Remove";showError(error.message||String(error));}
     });
     card.append(cmp,name,links,remove);
     if(!out.metadata_preserved){const warning=document.createElement("p");warning.className="metadata-warning";warning.textContent="Some camera metadata could not be copied. Check that ExifTool is installed and supports this RAW format.";card.appendChild(warning)}
