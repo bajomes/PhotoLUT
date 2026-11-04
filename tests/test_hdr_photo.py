@@ -105,3 +105,20 @@ def test_encoder_uses_srgb_gamut_and_content_boost(tmp_path: Path, monkeypatch):
     assert encode[encode.index("-c") + 1] == "0"
     assert encode[encode.index("-K") + 1] == "3.5"
     assert result["gain_map_verified"] is True
+
+
+
+def test_encoder_timeout_removes_partial_output(tmp_path: Path, monkeypatch):
+    source = tmp_path / "input.tiff"
+    _write_rgb_tiff(source, np.full((2, 2, 3), 50000, dtype=np.uint16))
+    destination = tmp_path / "out.jpg"
+    destination.write_bytes(b"stale partial")
+    monkeypatch.setattr(hdr_photo.shutil, "which", lambda _: "/usr/bin/ultrahdr_app")
+
+    def timeout(*_args, **_kwargs):
+        raise hdr_photo.subprocess.TimeoutExpired("ultrahdr_app", 180)
+
+    monkeypatch.setattr(hdr_photo.subprocess, "run", timeout)
+    with pytest.raises(RuntimeError, match="timed out"):
+        hdr_photo.export_ultrahdr(source, destination)
+    assert not destination.exists()
