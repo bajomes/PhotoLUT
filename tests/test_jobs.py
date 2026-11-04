@@ -120,3 +120,30 @@ def test_registered_job_dir_is_not_treated_as_orphan(tmp_path):
     finally:
         with jobs._lock:
             jobs._jobs.pop(job.id, None)
+
+
+def test_remove_job_output_is_atomic_and_only_removes_matching_item():
+    job = jobs.create_job()
+    try:
+        jobs.update_job(job.id, status=jobs.JobStatus.DONE, outputs=[
+            {"id": "0", "filename": "first.nef"},
+            {"id": "1", "filename": "second.nef"},
+        ])
+        removed = jobs.remove_job_output(job.id, "1")
+        assert removed == {"id": "1", "filename": "second.nef"}
+        assert jobs.get_job(job.id).outputs == [{"id": "0", "filename": "first.nef"}]
+        assert jobs.remove_job_output(job.id, "missing") is None
+    finally:
+        with jobs._lock:
+            jobs._jobs.pop(job.id, None)
+
+
+def test_remove_job_output_rejects_non_terminal_job():
+    job = jobs.create_job()
+    try:
+        jobs.update_job(job.id, outputs=[{"id": "0", "filename": "first.nef"}])
+        assert jobs.remove_job_output(job.id, "0") is None
+        assert len(jobs.get_job(job.id).outputs) == 1
+    finally:
+        with jobs._lock:
+            jobs._jobs.pop(job.id, None)
