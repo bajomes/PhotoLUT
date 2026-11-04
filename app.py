@@ -210,6 +210,7 @@ def _process_job_sync(
             )
 
             outputs.append({
+                "id": str(i),
                 "filename": original_filename,
                 "metadata_preserved": metadata_ok,
                 "preview_before": f"/files/{job_id}/{paths['preview_before'].name}",
@@ -381,6 +382,29 @@ def job_status(job_id: str) -> dict:
         "message": job.message,
         "outputs": job.outputs,
     }
+
+
+@app.delete("/api/jobs/{job_id}/outputs/{output_id}")
+def delete_job_output(job_id: str, output_id: str) -> dict:
+    """Remove one finished photo and all of its generated files."""
+    if not job_id.isalnum() or not output_id.isdecimal():
+        raise HTTPException(400, "Invalid request")
+    removed = jobs.remove_job_output(job_id, output_id)
+    if removed is None:
+        raise HTTPException(404, "Export item not found")
+    out_dir = (WORK_DIR / job_id / "out").resolve()
+    for key in ("preview_before", "preview_after", "download_tiff", "download_jpeg"):
+        url = removed.get(key)
+        if not url:
+            continue
+        name = Path(url).name
+        path = (out_dir / name).resolve()
+        if path.parent == out_dir:
+            path.unlink(missing_ok=True)
+    for archive_name in ("all.zip", "all-jpeg.zip", "all-tiff.zip"):
+        (out_dir / archive_name).unlink(missing_ok=True)
+    job = jobs.get_job(job_id)
+    return {"removed": removed.get("filename", ""), "outputs": job.outputs if job else []}
 
 
 @app.get("/files/{job_id}/all.zip")
