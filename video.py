@@ -284,7 +284,7 @@ def _supports_gpu_lut(ffmpeg: str) -> bool:
 
 
 def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: float) -> str:
-    """Grade HLG HDR with a Vulkan GPU LUT when available; verify 10-bit HLG output."""
+    """Grade HLG HDR through NVIDIA NVDEC, Vulkan/libplacebo, and NVENC; verify output."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("FFmpeg is not installed.")
