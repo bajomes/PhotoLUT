@@ -5,6 +5,7 @@ with a conservative inverse-tone-map shoulder; they are not recovered source dat
 """
 from __future__ import annotations
 
+import io
 import shutil
 import subprocess
 import tempfile
@@ -15,7 +16,7 @@ import tifffile
 from PIL import Image, ImageCms
 
 MAX_TIFF_BYTES = 200 * 1024 * 1024
-MAX_PIXELS = 80_000_000
+MAX_PIXELS = 24_000_000
 DEFAULT_BOOST = 4.0
 
 
@@ -34,7 +35,7 @@ def _is_srgb_profile(profile_bytes: bytes) -> bool:
     """Only pass through profiles explicitly identified as sRGB."""
     try:
         description = ImageCms.getProfileDescription(
-            ImageCms.ImageCmsProfile(__import__("io").BytesIO(profile_bytes))
+            ImageCms.ImageCmsProfile(io.BytesIO(profile_bytes))
         )
     except Exception as exc:
         raise ValueError("TIFF contains an unreadable ICC profile") from exc
@@ -110,6 +111,8 @@ def export_ultrahdr(
         raise ValueError("max_boost must be greater than 1 and no more than 8")
     if timeout <= 0:
         raise ValueError("timeout must be positive")
+    destination = Path(destination)
+    destination.unlink(missing_ok=True)
     executable = shutil.which(encoder)
     if executable is None:
         raise RuntimeError(f"Ultra HDR encoder '{encoder}' is not installed")
@@ -138,16 +141,24 @@ def export_ultrahdr(
             "-w", str(width), "-h", str(height), "-q", str(quality),
             "-Q", str(quality), "-D", "1", "-z", str(destination),
         ]
-        result = subprocess.run(command, capture_output=True, text=True,
-                                timeout=timeout, check=False)
+        try:
+            result = subprocess.run(command, capture_output=True, text=True,
+                                    timeout=timeout, check=False)
+        except subprocess.TimeoutExpired as exc:
+            destination.unlink(missing_ok=True)
+            raise RuntimeError("Ultra HDR encoding timed out") from exc
         if result.returncode != 0 or not destination.is_file():
             destination.unlink(missing_ok=True)
             detail = (result.stderr or result.stdout or "encoder failed").strip()
             raise RuntimeError(f"Ultra HDR encoding failed: {detail[:500]}")
-        probe = subprocess.run(
-            [executable, "-m", "1", "-j", str(destination), "-P"],
-            capture_output=True, text=True, timeout=timeout, check=False,
-        )
+        try:
+            probe = subprocess.run(
+                [executable, "-m", "1", "-j", str(destination), "-P"],
+                capture_output=True, text=True, timeout=timeout, check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            destination.unlink(missing_ok=True)
+            raise RuntimeError("Ultra HDR gain-map verification timed out") from exc
         probe_text = (probe.stdout or "") + (probe.stderr or "")
         if probe.returncode != 0 or "gainmap" not in probe_text.lower():
             destination.unlink(missing_ok=True)
