@@ -649,3 +649,21 @@ def test_transcode_rejects_unknown_lut_profile_before_ffmpeg(tmp_path: Path):
             video.transcode_hlg_video(source, lut, output, 0.4, "camera-log")
     run.assert_not_called()
     assert not output.exists()
+
+
+def test_rec709_intensity_blends_in_bt1886_linear_light(tmp_path: Path):
+    source = tmp_path / "constant-rec709.cube"
+    source.write_text(
+        "LUT_3D_SIZE 2\\n" + "0.5 0.5 0.5\\n" * 8,
+        encoding="ascii",
+    )
+    parsed = video.core.parse_cube(source)
+    baked = tmp_path / "baked-constant-rec709.cube"
+
+    video._write_intensity_lut(parsed, 0.4, baked, "rec709")
+
+    result = video.core.parse_cube(baked)
+    expected_black = (0.4 * (0.5 ** 2.4)) ** (1.0 / 2.4)
+    expected_white = (0.6 + 0.4 * (0.5 ** 2.4)) ** (1.0 / 2.4)
+    assert result.table[0, 0, 0] == pytest.approx([expected_black] * 3, abs=2e-6)
+    assert result.table[-1, -1, -1] == pytest.approx([expected_white] * 3, abs=2e-6)
