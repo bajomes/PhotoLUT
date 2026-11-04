@@ -336,7 +336,7 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
 def test_transcode_does_not_write_temporary_lut_when_gpu_support_is_missing(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
-    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8)
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
 
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", return_value={"hlg_metadata_complete": True}
