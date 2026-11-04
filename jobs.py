@@ -115,6 +115,7 @@ def get_job_snapshot(job_id: str) -> JobState | None:
             finished_at=state.finished_at,
         )
 
+
 def get_job(job_id: str) -> JobState | None:
     with _lock:
         return _jobs.get(job_id)
