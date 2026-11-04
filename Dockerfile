@@ -23,6 +23,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py core.py jobs.py video.py ./
 COPY static/ static/
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod 755 ./docker-entrypoint.sh && sh -n ./docker-entrypoint.sh
 
 ENV PHOTOLUT_WORK_DIR=/var/lib/photolut/jobs
 RUN mkdir -p /var/lib/photolut/jobs && chown -R photolut:photolut /var/lib/photolut
@@ -30,4 +32,5 @@ USER photolut
 
 EXPOSE 8000
 
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
