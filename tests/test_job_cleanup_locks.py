@@ -88,3 +88,38 @@ def test_cleanup_retains_job_while_output_response_is_streaming(tmp_path):
     assert job.id in jobs._cleanup_once(tmp_path, max_age=60, now=now)
     assert not job_dir.exists()
     assert jobs.get_job(job.id) is None
+
+
+def test_job_status_snapshot_is_detached_from_later_updates():
+    job = jobs.create_job()
+    initial_outputs = [{"id": "0", "filename": "first.nef"}]
+    jobs.update_job(
+        job.id,
+        status=jobs.JobStatus.APPLYING,
+        progress=35,
+        current_file="first.nef",
+        outputs=initial_outputs,
+    )
+
+    snapshot = jobs.get_job_snapshot(job.id)
+    assert snapshot is not None
+
+    jobs.update_job(
+        job.id,
+        status=jobs.JobStatus.DONE,
+        progress=100,
+        current_file="second.nef",
+        outputs=[{"id": "1", "filename": "second.nef"}],
+    )
+    snapshot.outputs[0]["filename"] = "mutated.nef"
+
+    assert snapshot.status == jobs.JobStatus.APPLYING
+    assert snapshot.progress == 35
+    assert snapshot.current_file == "first.nef"
+    assert snapshot.outputs == [{"id": "0", "filename": "mutated.nef"}]
+    current = jobs.get_job(job.id)
+    assert current is not None
+    assert current.status == jobs.JobStatus.DONE
+    assert current.outputs == [{"id": "1", "filename": "second.nef"}]
+    with jobs._lock:
+        jobs._jobs.pop(job.id, None)

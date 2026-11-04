@@ -391,7 +391,7 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
 def job_status(job_id: str) -> dict:
     if not job_id.isalnum():
         raise HTTPException(400, "Invalid job ID")
-    job = jobs.get_job(job_id)
+    job = jobs.get_job_snapshot(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
     return {

@@ -1,6 +1,7 @@
 """Thread-safe job state and terminal-job cleanup."""
 from __future__ import annotations
 
+import copy
 import re
 import shutil
 import threading
@@ -81,8 +82,6 @@ def has_output_leases(job_id: str) -> bool:
 
 def get_job_outputs_snapshot(job_id: str) -> tuple[JobStatus, list[dict]] | None:
     """Return a detached output manifest while holding the registry lock."""
-    import copy
-
     with _lock:
         state = _jobs.get(job_id)
         if state is None:
@@ -95,6 +94,26 @@ def create_job() -> JobState:
     with _lock:
         _jobs[job.id] = job
     return job
+
+
+def get_job_snapshot(job_id: str) -> JobState | None:
+    """Return a detached, internally consistent job snapshot."""
+    with _lock:
+        state = _jobs.get(job_id)
+        if state is None:
+            return None
+        return JobState(
+            id=state.id,
+            status=state.status,
+            progress=state.progress,
+            current_file=state.current_file,
+            total_files=state.total_files,
+            done_files=state.done_files,
+            message=state.message,
+            outputs=copy.deepcopy(state.outputs),
+            created_at=state.created_at,
+            finished_at=state.finished_at,
+        )
 
 
 def get_job(job_id: str) -> JobState | None:
