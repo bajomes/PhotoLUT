@@ -347,18 +347,22 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         ],
     ]
 
-    processing_paths: list[tuple[str, str, bool]] = []
+    processing_paths: list[tuple[str, str, bool, bool]] = []
     if _supports_gpu_lut(ffmpeg):
-        processing_paths.append(("GPU (Vulkan/libplacebo 3D LUT)", _gpu_ffmpeg_filter(baked_lut), True))
-    processing_paths.append(("CPU fallback (zscale/lut3d)", _ffmpeg_filter(lut_path, intensity), False))
+        processing_paths.append(("GPU decode (NVDEC) + Vulkan/libplacebo LUT + NVENC", _gpu_ffmpeg_filter(baked_lut), True, True))
+    processing_paths.append(("CPU LUT (zscale/lut3d) + NVENC", _ffmpeg_filter(lut_path, intensity), False, False))
 
     last_error: subprocess.CalledProcessError | None = None
     selected_backend: str | None = None
     try:
-        for backend, filter_graph, use_vulkan in processing_paths:
+        for backend, filter_graph, use_vulkan, use_nvdec in processing_paths:
             common_command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y"]
             if use_vulkan:
                 common_command += ["-init_hw_device", "vulkan=vk:0", "-filter_hw_device", "vk"]
+            if use_nvdec:
+                # NVDEC decodes on the NVIDIA GPU. Frames are downloaded for
+                # the Vulkan upload performed by _gpu_ffmpeg_filter.
+                common_command += ["-hwaccel", "cuda"]
             common_command += [
                 "-i", str(source), "-filter_complex", filter_graph,
                 "-map", "[outv]", "-map", "0:a?",
