@@ -330,3 +330,19 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
 
     assert backend.startswith("GPU decode (NVDEC) + Vulkan/libplacebo LUT") and backend.endswith("+ NVENC")
     assert output.read_bytes() == b"gpu-mp4"
+
+
+
+def test_transcode_does_not_write_temporary_lut_when_gpu_support_is_missing(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8)
+
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", return_value={"hlg_metadata_complete": True}
+    ), patch("video._supports_gpu_lut", return_value=False):
+        with pytest.raises(RuntimeError, match="does not expose libplacebo"):
+            video.transcode_hlg_video(source, lut, output, 1.0)
+
+    assert not (tmp_path / "photolut-intensity-hlg.cube").exists()
+    assert not output.exists()
