@@ -84,55 +84,6 @@ jobs:
           grep -q '<title>PhotoLUT</title>' /tmp/photolut-index.html
           docker exec photolut-ci ffmpeg -hide_banner -filters 2>&1 | grep libplacebo >/dev/null
           docker exec photolut-ci ffmpeg -hide_banner -h filter=libplacebo 2>&1 | grep 'lut ' >/dev/null
-          docker exec photolut-ci ffmpeg -hide_banner -encoders 2>&1 | grep 'hevc_nvenc' >/dev/null
-          docker exec photolut-ci ffmpeg -hide_banner -hwaccels 2>&1 | grep '^cuda$' >/dev/null
-          docker exec photolut-ci sh -c 'ffmpeg -hide_banner -init_hw_device list 2>&1 || true' | grep 'vulkan' >/dev/null
-          grep -q 'id="previewCompare"' /tmp/photolut-index.html
-          grep -q 'id="videoCompareStage"' /tmp/photolut-index.html
-          grep -q 'id="videoCompareSeek"' /tmp/photolut-index.html
-          grep -q 'data-studio-mode="photos"' /tmp/photolut-index.html
-          grep -q 'data-studio-mode="video"' /tmp/photolut-index.html
-          grep -q 'id="videoPreviewPanel"' /tmp/photolut-index.html
-          grep -q '.shell\[data-mode="video"\] #inputArea' /tmp/photolut-index.html
-          ! grep -q 'id="videoCompareSeconds"' /tmp/photolut-index.html
-          ! grep -q 'id="preserveHdrBtn"' /tmp/photolut-index.html
-          grep -q 'id="intensity"' /tmp/photolut-index.html
-          grep -q 'id="downloadPicker"' /tmp/photolut-index.html
-          grep -q 'family=Inter:wght@100..900' /tmp/photolut-index.html
-          grep -q 'Process batch' /tmp/photolut-index.html
-          curl --fail --silent http://127.0.0.1:8000/luts/photolut-neutral-hlg-bt2020.cube --output /tmp/photolut-neutral-hlg-bt2020.cube
-          grep -q 'LUT_3D_SIZE 17' /tmp/photolut-neutral-hlg-bt2020.cube
-          python - <<'PY'
-          from html.parser import HTMLParser
-          from pathlib import Path
-
-          class InlineScripts(HTMLParser):
-              def __init__(self):
-                  super().__init__()
-                  self.in_script = False
-                  self.parts = []
-
-              def handle_starttag(self, tag, attrs):
-                  if tag == 'script' and not dict(attrs).get('src'):
-                      self.in_script = True
-
-              def handle_endtag(self, tag):
-                  if tag == 'script':
-                      self.in_script = False
-
-              def handle_data(self, data):
-                  if self.in_script:
-                      self.parts.append(data)
-
-          parser = InlineScripts()
-          parser.feed(Path('/tmp/photolut-index.html').read_text())
-          Path('/tmp/photolut-inline.js').write_text('\\n'.join(parser.parts))
-          PY
-          node --check /tmp/photolut-inline.js
-          curl --fail --silent http://127.0.0.1:8000/openapi.json |
-            python -c 'import json, sys; assert json.load(sys.stdin)["info"]["title"] == "PhotoLUT"'
- >/dev/null
-          docker exec photolut-ci ffmpeg -hide_banner -init_hw_device list 2>&1 | grep 'vulkan' >/dev/null
           grep -q 'id="previewCompare"' /tmp/photolut-index.html
           grep -q 'id="videoCompareStage"' /tmp/photolut-index.html
           grep -q 'id="videoCompareSeek"' /tmp/photolut-index.html
