@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from playwright.sync_api import expect, sync_playwright
 
