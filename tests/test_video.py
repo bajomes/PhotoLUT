@@ -707,7 +707,9 @@ def test_video_api_returns_sdr_headers_for_rec709_profile(monkeypatch):
         assert response.headers["X-PhotoLUT-Output-Transfer"] == "bt709"
         assert response.headers["X-PhotoLUT-Output-Profile"] == "rec709"
         assert "X-PhotoLUT-HDR-Transfer" not in response.headers
-        assert response.filename.endswith("_photolut_sdr_rec709_10bit.mp4")
+        assert response.headers["content-disposition"].endswith(
+            'filename="source_photolut_sdr_rec709_10bit.mp4"'
+        )
         assert Path(response.path).is_file()
         await response.background()
         assert not Path(response.path).exists()
