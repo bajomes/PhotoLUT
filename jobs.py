@@ -145,6 +145,8 @@ def _cleanup_once(work_dir: Path, max_age: int, now: float | None = None) -> lis
 
     orphans = _remove_orphan_job_dirs(work_dir, known_ids, max_age, now)
     return expired + orphans
+
+
 def _remove_orphan_job_dirs(
     work_dir: Path, known_ids: set[str], max_age: int, now: float
 ) -> list[str]:
