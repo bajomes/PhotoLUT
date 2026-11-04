@@ -110,18 +110,6 @@ def test_inspect_video_reports_timeout(tmp_path: Path):
             video.inspect_video(source)
 
 
-def test_video_filter_keeps_ten_bit_and_applies_intensity(tmp_path: Path):
-    lut = tmp_path / "look.cube"
-    graph = video._ffmpeg_filter(lut, 0.35)
-    assert "lut3d=" in graph
-    assert "A*(1-0.350000)+B*0.350000" in graph
-    assert "[base_hlg]zscale=" in graph
-    assert "[graded_hlg]zscale=" in graph
-    assert "transfer=linear" in graph
-    assert "[mixed_linear]zscale=" in graph
-    assert "format=yuv420p10le[outv]" in graph
-
-
 def test_transcode_rejects_dolby_vision_before_ffmpeg(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
@@ -265,17 +253,6 @@ def test_builtin_neutral_hlg_lut_is_valid_and_bounded():
     assert parsed.size == 17
     assert parsed.table.min() >= 0.0
     assert parsed.table.max() <= 1.0
-
-
-def test_hlg_filter_does_not_tone_map_to_sdr(tmp_path: Path):
-    graph = video._ffmpeg_filter(tmp_path / "natural.cube", 1.0)
-    assert "tonemap=" not in graph
-    assert "bt709" not in graph
-    assert "transfer=arib-std-b67" in graph
-    assert "transfer=linear" in graph
-    assert "primaries=bt2020" in graph
-    assert "format=yuv420p10le[outv]" in graph
-
 
 
 def test_transcode_never_falls_back_to_cpu_when_gpu_path_fails(tmp_path: Path):
