@@ -30,6 +30,7 @@ RUN echo "deb http://deb.debian.org/debian sid main" > /etc/apt/sources.list.d/s
         libraw-dev \
         libimage-exiftool-perl \
         libvulkan1 \
+        libjpeg62-turbo \
         ffmpeg/sid \
     && ffmpeg -hide_banner -filters 2>&1 | grep -q libplacebo \
     && ffmpeg -hide_banner -h filter=libplacebo 2>&1 | grep -Eq '^[[:space:]]*lut[[:space:]]+<' \
