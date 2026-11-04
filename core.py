@@ -228,12 +228,38 @@ def decode_raw(path: Path, colorspace: str = "srgb") -> np.ndarray:
     return rgb16.astype(np.float32) / 65535.0
 
 
+def _srgb_to_linear(rgb: np.ndarray) -> np.ndarray:
+    """Decode normalized sRGB values to linear-light RGB."""
+    values = np.clip(np.asarray(rgb, dtype=np.float32), 0.0, 1.0)
+    linear = np.where(
+        values <= 0.04045,
+        values / 12.92,
+        ((values + 0.055) / 1.055) ** 2.4,
+    )
+    return linear.astype(np.float32)
+
+
+def _linear_to_srgb(rgb: np.ndarray) -> np.ndarray:
+    """Encode normalized linear-light RGB values as sRGB."""
+    values = np.clip(np.asarray(rgb, dtype=np.float32), 0.0, 1.0)
+    encoded = np.where(
+        values <= 0.0031308,
+        values * 12.92,
+        1.055 * np.power(values, 1.0 / 2.4) - 0.055,
+    )
+    return encoded.astype(np.float32)
+
+
 def blend_intensity(graded: np.ndarray, original: np.ndarray, intensity: float) -> np.ndarray:
+    """Blend sRGB image variants in linear light to avoid gamma-space mixing."""
     if not 0.0 <= intensity <= 1.0:
         raise ValueError("intensity must be between 0.0 and 1.0")
     if graded.shape != original.shape:
         raise ValueError("graded and original images must have identical shapes")
-    return np.clip(graded * intensity + original * (1.0 - intensity), 0.0, 1.0).astype(np.float32)
+    graded_linear = _srgb_to_linear(graded)
+    original_linear = _srgb_to_linear(original)
+    mixed_linear = graded_linear * intensity + original_linear * (1.0 - intensity)
+    return _linear_to_srgb(mixed_linear)
 
 
 def srgb_icc_profile() -> bytes:
