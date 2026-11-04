@@ -385,3 +385,28 @@ def test_transcode_cleans_partial_temporary_lut_when_write_fails(tmp_path: Path)
             video.transcode_hlg_video(source, lut, output, 1.0)
 
     assert not (tmp_path / "photolut-intensity-hlg.cube").exists()
+
+
+def test_intensity_lut_preserves_custom_domain_for_libplacebo(tmp_path: Path):
+    source = tmp_path / "custom-domain.cube"
+    lines = [
+        "LUT_3D_SIZE 2",
+        "DOMAIN_MIN 0.2 0.1 0.3",
+        "DOMAIN_MAX 0.8 0.9 0.7",
+    ]
+    for blue in (0.3, 0.7):
+        for green in (0.1, 0.9):
+            for red in (0.2, 0.8):
+                lines.append(f"{red} {green} {blue}")
+    source.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+    parsed = video.core.parse_cube(source)
+    baked = tmp_path / "baked-custom-domain.cube"
+    video._write_intensity_lut(parsed, 0.4, baked)
+    serialized = video.core.parse_cube(baked)
+
+    # libplacebo maps serialized samples back through the declared domain.
+    normalized_for_libplacebo = (
+        serialized.table - parsed.domain_min
+    ) / (parsed.domain_max - parsed.domain_min)
+    assert normalized_for_libplacebo == pytest.approx(parsed.table, abs=2e-6)

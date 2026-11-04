@@ -248,7 +248,12 @@ def _write_intensity_lut(lut: core.CubeLUT, intensity: float, output: Path) -> N
         stream.write(f"LUT_3D_SIZE {lut.size}\n")
         stream.write("DOMAIN_MIN " + " ".join(f"{v:.8f}" for v in lut.domain_min) + "\n")
         stream.write("DOMAIN_MAX " + " ".join(f"{v:.8f}" for v in lut.domain_max) + "\n")
-        for rgb in mixed_hlg.reshape(-1, 3):
+        # libplacebo normalizes .cube output samples through DOMAIN_MIN/MAX
+        # while parsing. Encode samples in that domain so the GPU LUT receives
+        # the same normalized RGB values produced by the intensity blend.
+        domain_span = lut.domain_max - lut.domain_min
+        serialized_table = lut.domain_min + mixed_hlg * domain_span
+        for rgb in serialized_table.reshape(-1, 3):
             stream.write(" ".join(f"{float(v):.8f}" for v in rgb) + "\n")
 
 
