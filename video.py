@@ -301,9 +301,10 @@ def _gpu_ffmpeg_filter(lut_path: Path) -> str:
         # Vulkan device (verified to select the NVIDIA GPU), then transfer its
         # 10-bit software output to CUDA for NVENC. This keeps grading on GPU
         # and avoids the failing external Vulkan-device handoff.
-        f"libplacebo=lut='{lut}':lut_type=native:"
-        "colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67:"
-        "range=tv:peak_detect=false,"
+        # Preserve the source HLG/BT.2020 signal. Explicit output colorimetry
+        # forces libplacebo through a conversion path even when the tags match.
+        # Avoid that conversion so an identity LUT does not alter the source.
+        f"libplacebo=lut='{lut}':lut_type=native:peak_detect=false,"
         "format=p010le,hwupload_cuda[outv]"
     )
 
