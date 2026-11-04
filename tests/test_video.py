@@ -110,18 +110,6 @@ def test_inspect_video_reports_timeout(tmp_path: Path):
             video.inspect_video(source)
 
 
-def test_video_filter_keeps_ten_bit_and_applies_intensity(tmp_path: Path):
-    lut = tmp_path / "look.cube"
-    graph = video._ffmpeg_filter(lut, 0.35)
-    assert "lut3d=" in graph
-    assert "A*(1-0.350000)+B*0.350000" in graph
-    assert "[base_hlg]zscale=" in graph
-    assert "[graded_hlg]zscale=" in graph
-    assert "transfer=linear" in graph
-    assert "[mixed_linear]zscale=" in graph
-    assert "format=yuv420p10le[outv]" in graph
-
-
 def test_transcode_rejects_dolby_vision_before_ffmpeg(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
@@ -240,7 +228,7 @@ def test_transcode_removes_partial_output_when_ffmpeg_fails(tmp_path: Path):
         run.side_effect = fake_run
         with pytest.raises(RuntimeError, match="GPU-only HDR export failed"):
             video.transcode_hlg_video(source, lut, output, 1.0)
-    assert run.call_count == 4
+    assert run.call_count == 1
     assert not output.exists()
 
 
@@ -267,17 +255,6 @@ def test_builtin_neutral_hlg_lut_is_valid_and_bounded():
     assert parsed.table.max() <= 1.0
 
 
-def test_hlg_filter_does_not_tone_map_to_sdr(tmp_path: Path):
-    graph = video._ffmpeg_filter(tmp_path / "natural.cube", 1.0)
-    assert "tonemap=" not in graph
-    assert "bt709" not in graph
-    assert "transfer=arib-std-b67" in graph
-    assert "transfer=linear" in graph
-    assert "primaries=bt2020" in graph
-    assert "format=yuv420p10le[outv]" in graph
-
-
-
 def test_transcode_never_falls_back_to_cpu_when_gpu_path_fails(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
@@ -292,7 +269,7 @@ def test_transcode_never_falls_back_to_cpu_when_gpu_path_fails(tmp_path: Path):
         with pytest.raises(RuntimeError, match="CPU processing was not started"):
             video.transcode_hlg_video(source, lut, output, 1.0)
 
-    assert run.call_count == 4
+    assert run.call_count == 1
     assert not output.exists()
 
 
@@ -335,8 +312,10 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
 
     def fake_run(command, **kwargs):
         assert "-init_hw_device" in command
-        assert "vulkan=vk:0" in command
+        assert "vulkan=vk:NVIDIA" in command
         assert command[command.index("-hwaccel") + 1] == "cuda"
+        assert command[command.index("-hwaccel_device") + 1] == "0"
+        assert command[command.index("-gpu") + 1] == "0"
         assert command[command.index("-hwaccel_output_format") + 1] == "cuda"
         assert command.index("-hwaccel") < command.index("-i")
         graph = command[command.index("-filter_complex") + 1]
@@ -351,5 +330,42 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
     ):
         backend = video.transcode_hlg_video(source, lut, output, 0.5)
 
-    assert backend.startswith("GPU decode (NVDEC) + Vulkan/libplacebo LUT") and backend.endswith("+ NVENC")
+    assert backend == "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo LUT + NVENC"
     assert output.read_bytes() == b"gpu-mp4"
+
+
+
+def test_transcode_does_not_write_temporary_lut_when_gpu_support_is_missing(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
+
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", return_value={"hlg_metadata_complete": True}
+    ), patch("video._supports_gpu_lut", return_value=False):
+        with pytest.raises(RuntimeError, match="does not expose libplacebo"):
+            video.transcode_hlg_video(source, lut, output, 1.0)
+
+    assert not (tmp_path / "photolut-intensity-hlg.cube").exists()
+    assert not output.exists()
+
+
+
+def test_transcode_cleans_partial_temporary_lut_when_write_fails(tmp_path: Path):
+    source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
+    source.write_bytes(b"video")
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
+
+    def fail_after_partial_write(_lut, _intensity, path):
+        path.write_text("partial")
+        raise OSError("disk full")
+
+    with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
+        "video.inspect_video", return_value={"hlg_metadata_complete": True}
+    ), patch("video._supports_gpu_lut", return_value=True), patch(
+        "video._write_intensity_lut", side_effect=fail_after_partial_write
+    ):
+        with pytest.raises(OSError, match="disk full"):
+            video.transcode_hlg_video(source, lut, output, 1.0)
+
+    assert not (tmp_path / "photolut-intensity-hlg.cube").exists()

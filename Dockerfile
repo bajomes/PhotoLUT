@@ -8,7 +8,10 @@ RUN echo "deb http://deb.debian.org/debian sid main" > /etc/apt/sources.list.d/s
         libvulkan1 \
         ffmpeg/sid \
     && ffmpeg -hide_banner -filters 2>&1 | grep -q libplacebo \
-    && ffmpeg -hide_banner -h filter=libplacebo 2>&1 | grep -q lut \
+    && ffmpeg -hide_banner -h filter=libplacebo 2>&1 | grep -Eq '^[[:space:]]*lut[[:space:]]+<' \
+    && ffmpeg -hide_banner -encoders 2>&1 | grep -q hevc_nvenc \
+    && ffmpeg -hide_banner -hwaccels 2>&1 | grep -q '^cuda$' \
+    && ffmpeg -hide_banner -init_hw_device list 2>&1 | grep -q vulkan \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system photolut && useradd --system --gid photolut --home-dir /app --no-create-home photolut
