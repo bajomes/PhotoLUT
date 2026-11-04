@@ -1,8 +1,10 @@
 from pathlib import Path
+import io
 
 import numpy as np
 import pytest
 import tifffile
+from PIL import ImageCms
 
 import hdr_photo
 
@@ -30,6 +32,17 @@ def test_rejects_invalid_boost(boost):
     with pytest.raises(ValueError):
         hdr_photo._make_hdr_intent(np.zeros((1, 1, 3), dtype=np.float32), boost)
 
+
+
+def test_accepts_real_srgb_icc_profile():
+    profile = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB"))
+    assert hdr_photo._is_srgb_profile(profile.tobytes())
+
+
+def test_rejects_non_rgb_icc_profile():
+    profile = ImageCms.ImageCmsProfile(ImageCms.createProfile("LAB"))
+    with pytest.raises(ValueError, match="ICC profile"):
+        hdr_photo._is_srgb_profile(profile.tobytes())
 
 def test_loads_rgb_16bit_tiff(tmp_path: Path):
     source = tmp_path / "rgb.tiff"
