@@ -16,7 +16,7 @@ import tifffile
 from PIL import Image, ImageCms
 
 MAX_TIFF_BYTES = 200 * 1024 * 1024
-MAX_PIXELS = 24_000_000
+MAX_PIXELS = 8_000_000
 DEFAULT_BOOST = 4.0
 
 
