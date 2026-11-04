@@ -209,28 +209,6 @@ VIDEO_PROCESSING_SLOT = __import__("threading").BoundedSemaphore(1)
 VIDEO_PROCESS_TIMEOUT_SECONDS = 20 * 60
 
 
-def _ffmpeg_filter(lut_path: Path, intensity: float) -> str:
-    """CPU fallback: apply the HLG LUT and blend its strength in linear light."""
-    lut = str(lut_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-    amount = format(intensity, ".6f")
-    return (
-        "[0:v]zscale=matrixin=bt2020nc:transferin=arib-std-b67:primariesin=bt2020:"
-        "matrix=gbr:transfer=arib-std-b67:primaries=bt2020:range=full,"
-        "format=gbrpf32le,split=2[base_hlg][forlut];"
-        f"[forlut]lut3d=file='{lut}':interp=tetrahedral[graded_hlg];"
-        "[base_hlg]zscale=matrixin=gbr:transferin=arib-std-b67:primariesin=bt2020:"
-        "rangein=full:matrix=gbr:transfer=linear:primaries=bt2020:range=full[base_linear];"
-        "[graded_hlg]zscale=matrixin=gbr:transferin=arib-std-b67:primariesin=bt2020:"
-        "rangein=full:matrix=gbr:transfer=linear:primaries=bt2020:range=full[graded_linear];"
-        f"[base_linear][graded_linear]blend=all_expr='A*(1-{amount})+B*{amount}'[mixed_linear];"
-        "[mixed_linear]zscale=matrixin=gbr:transferin=linear:primariesin=bt2020:"
-        "rangein=full:matrix=gbr:transfer=arib-std-b67:primaries=bt2020:range=full,"
-        "zscale=matrixin=gbr:transferin=arib-std-b67:primariesin=bt2020:rangein=full:"
-        "matrix=bt2020nc:transfer=arib-std-b67:primaries=bt2020:range=limited,"
-        "format=yuv420p10le[outv]"
-    )
-
-
 def _hlg_to_linear(signal: np.ndarray) -> np.ndarray:
     """Inverse HLG OETF for normalized HLG signal values."""
     value = np.clip(np.asarray(signal, dtype=np.float32), 0.0, 1.0)
