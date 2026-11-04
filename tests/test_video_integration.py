@@ -76,7 +76,7 @@ def _run(command: list[str]) -> None:
     subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
 
 
-def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
+def test_synthetic_hlg_video_exports_hlg_and_rec709_10bit_mp4(tmp_path: Path):
     """Exercise FFmpeg, LUT parsing, HLG gating, encoding, and output metadata."""
     ffmpeg = shutil.which("ffmpeg")
     ffprobe = shutil.which("ffprobe")
@@ -121,7 +121,7 @@ def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
     assert source_metadata["bit_depth"] == 10
 
     backend = video.transcode_hlg_video(source, lut, output, 0.65)
-    assert backend == "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo LUT + NVENC"
+    assert backend == "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo HLG LUT + NVENC"
 
     result = video.inspect_video(output)
     assert output.is_file() and output.stat().st_size > 0
@@ -160,3 +160,23 @@ def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
     match = re.search(r"average:([0-9.]+)", comparison.stderr)
     assert match, comparison.stderr
     assert float(match.group(1)) > 30.0, comparison.stderr
+
+    # The Rec.709 profile must run the full two-pass Vulkan path: HLG tone
+    # mapping first, then the creative LUT in native SDR BT.709 RGB.
+    sdr_output = tmp_path / "graded_rec709.mp4"
+    sdr_backend = video.transcode_hlg_video(source, lut, sdr_output, 0.65, "rec709")
+    assert sdr_backend == (
+        "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo HLG-to-SDR BT.709 "
+        "tone map + Rec.709 LUT + NVENC"
+    )
+
+    sdr_result = video.inspect_video(sdr_output)
+    assert sdr_output.is_file() and sdr_output.stat().st_size > 0
+    assert sdr_result["codec"] == "hevc"
+    assert sdr_result["codec_profile"] == "Main 10"
+    assert sdr_result["bit_depth"] == 10
+    assert sdr_result["pixel_format"] == "yuv420p10le"
+    assert sdr_result["color_primaries"] == "bt709"
+    assert sdr_result["color_transfer"] == "bt709"
+    assert sdr_result["color_matrix"] == "bt709"
+    assert sdr_result["is_hdr"] is False

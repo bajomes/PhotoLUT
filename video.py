@@ -263,40 +263,82 @@ def _linear_to_hlg(linear: np.ndarray) -> np.ndarray:
                     a * np.log(np.maximum(12.0 * value - b, 1e-8)) + c).astype(np.float32)
 
 
-def _write_intensity_lut(lut: core.CubeLUT, intensity: float, output: Path) -> None:
-    """Bake linear-light LUT strength into a .cube so the GPU does one lookup."""
+def _lut_to_linear(signal: np.ndarray, lut_profile: str) -> np.ndarray:
+    """Decode LUT-domain RGB values for a linear-light intensity blend."""
+    value = np.clip(np.asarray(signal, dtype=np.float32), 0.0, 1.0)
+    if lut_profile == "hlg":
+        return _hlg_to_linear(value)
+    if lut_profile == "rec709":
+        # Rec.709 creative LUTs are display-referred. BT.1886's 2.4 EOTF
+        # is the appropriate linear-light domain for blending their looks.
+        return np.power(value, 2.4).astype(np.float32)
+    raise ValueError("lut_profile must be 'hlg' or 'rec709'")
+
+
+def _linear_to_lut(linear: np.ndarray, lut_profile: str) -> np.ndarray:
+    """Encode linear-light RGB values back into the selected LUT domain."""
+    value = np.clip(np.asarray(linear, dtype=np.float32), 0.0, 1.0)
+    if lut_profile == "hlg":
+        return _linear_to_hlg(value)
+    if lut_profile == "rec709":
+        return np.power(value, 1.0 / 2.4).astype(np.float32)
+    raise ValueError("lut_profile must be 'hlg' or 'rec709'")
+
+
+def _write_intensity_lut(
+    lut: core.CubeLUT, intensity: float, output: Path, lut_profile: str = "hlg"
+) -> None:
+    """Bake LUT strength in its declared transfer domain for one GPU lookup."""
     if not 0.0 <= intensity <= 1.0:
         raise ValueError("intensity must be between 0.0 and 1.0")
+    if lut_profile not in {"hlg", "rec709"}:
+        raise ValueError("lut_profile must be 'hlg' or 'rec709'")
     red = np.linspace(lut.domain_min[0], lut.domain_max[0], lut.size, dtype=np.float32)
     green = np.linspace(lut.domain_min[1], lut.domain_max[1], lut.size, dtype=np.float32)
     blue = np.linspace(lut.domain_min[2], lut.domain_max[2], lut.size, dtype=np.float32)
     b_grid, g_grid, r_grid = np.meshgrid(blue, green, red, indexing="ij")
     identity = np.stack((r_grid, g_grid, b_grid), axis=-1)
-    original_linear = _hlg_to_linear(identity)
-    graded_linear = _hlg_to_linear(lut.table)
+    original_linear = _lut_to_linear(identity, lut_profile)
+    graded_linear = _lut_to_linear(lut.table, lut_profile)
     mixed = original_linear * (1.0 - intensity) + graded_linear * intensity
-    mixed_hlg = _linear_to_hlg(mixed)
+    mixed_encoded = _linear_to_lut(mixed, lut_profile)
 
     with output.open("w", encoding="ascii", newline="\n") as stream:
-        stream.write('TITLE "PhotoLUT GPU intensity-baked HLG LUT"\n')
+        stream.write(f'TITLE "PhotoLUT GPU intensity-baked {lut_profile.upper()} LUT"\n')
         stream.write(f"LUT_3D_SIZE {lut.size}\n")
         stream.write("DOMAIN_MIN " + " ".join(f"{v:.8f}" for v in lut.domain_min) + "\n")
         stream.write("DOMAIN_MAX " + " ".join(f"{v:.8f}" for v in lut.domain_max) + "\n")
-        # libplacebo normalizes .cube output samples through DOMAIN_MIN/MAX
-        # while parsing. Encode samples in that domain so the GPU LUT receives
-        # the same normalized RGB values produced by the intensity blend.
+        # libplacebo normalizes .cube output samples through DOMAIN_MIN/MAX.
+        # Serialize in the declared domain to preserve the blended RGB values.
         domain_span = lut.domain_max - lut.domain_min
-        serialized_table = lut.domain_min + mixed_hlg * domain_span
+        serialized_table = lut.domain_min + mixed_encoded * domain_span
         for rgb in serialized_table.reshape(-1, 3):
             stream.write(" ".join(f"{float(v):.8f}" for v in rgb) + "\n")
 
 
-def _gpu_ffmpeg_filter(lut_path: Path) -> str:
-    """Upload decoded 10-bit frames to Vulkan and run the .cube LUT on GPU."""
+def _gpu_ffmpeg_filter(lut_path: Path, lut_profile: str = "hlg") -> str:
+    """Build a Vulkan/libplacebo graph for HLG-domain or Rec.709 creative LUTs."""
+    if lut_profile not in {"hlg", "rec709"}:
+        raise ValueError("lut_profile must be 'hlg' or 'rec709'")
     lut = str(lut_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    upload = "[0:v]hwdownload,format=p010le,hwupload,"
+    if lut_profile == "rec709":
+        # First create a properly tone-mapped SDR BT.709 image. The second
+        # libplacebo pass applies the creative LUT to its intended native
+        # BT.709 display-referred RGB values. The resulting export is SDR.
+        return (
+            upload
+            + "libplacebo=tonemapping=bt.2390:format=p010le:"
+            "colorspace=bt709:color_primaries=bt709:color_trc=bt709:"
+            "range=tv:peak_detect=false,"
+            + f"libplacebo=lut='{lut}':lut_type=native:format=p010le:"
+            "colorspace=bt709:color_primaries=bt709:color_trc=bt709:"
+            "range=tv:peak_detect=false,"
+            "hwdownload,format=p010le[outv]"
+        )
     return (
-        "[0:v]hwdownload,format=p010le,hwupload,"
-        f"libplacebo=lut='{lut}':lut_type=native:format=p010le:"
+        upload
+        + f"libplacebo=lut='{lut}':lut_type=native:format=p010le:"
         "colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67:"
         "range=tv:peak_detect=false,"
         "hwdownload,format=p010le[outv]"
@@ -322,8 +364,10 @@ def _supports_gpu_lut(ffmpeg: str) -> bool:
         return False
 
 
-def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: float) -> str:
-    """Grade HLG HDR through NVIDIA NVDEC, Vulkan/libplacebo, and NVENC; verify output."""
+def transcode_hlg_video(
+    source: Path, lut_path: Path, output: Path, intensity: float, lut_profile: str = "hlg"
+) -> str:
+    """Grade HLG source through NVIDIA GPU; output HLG or tone-mapped Rec.709 SDR."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("FFmpeg is not installed.")
@@ -336,6 +380,8 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         raise ValueError(
             "LUT export is disabled for Dolby Vision sources because re-encoding would discard Dolby Vision dynamic metadata."
         )
+    if lut_profile not in {"hlg", "rec709"}:
+        raise ValueError("LUT profile must be 'hlg' or 'rec709'.")
     parsed_lut = core.parse_cube(lut_path)
     if not 0.0 <= intensity <= 1.0:
         raise ValueError("intensity must be between 0.0 and 1.0")
@@ -346,18 +392,26 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
             "CPU fallback is disabled to prevent unexpectedly high CPU load."
         )
 
-    baked_lut = output.with_name("photolut-intensity-hlg.cube")
+    baked_lut = output.with_name(f"photolut-intensity-{lut_profile}.cube")
 
+    if lut_profile == "hlg":
+        output_color_args = [
+            "-color_range", "tv", "-color_primaries", "bt2020",
+            "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc",
+        ]
+    else:
+        output_color_args = [
+            "-color_range", "tv", "-color_primaries", "bt709",
+            "-color_trc", "bt709", "-colorspace", "bt709",
+        ]
     output_metadata_args = [
-        "-tag:v", "hvc1", "-color_range", "tv",
-        "-color_primaries", "bt2020", "-color_trc", "arib-std-b67",
-        "-colorspace", "bt2020nc",
+        "-tag:v", "hvc1", *output_color_args,
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
     ]
 
     selected_backend: str | None = None
     try:
-        _write_intensity_lut(parsed_lut, intensity, baked_lut)
+        _write_intensity_lut(parsed_lut, intensity, baked_lut, lut_profile)
         # Select Vulkan by vendor name instead of an unstable physical-device index.
         # This prevents a hybrid laptop from silently grading on its integrated GPU
         # or a software Vulkan implementation.
@@ -367,7 +421,7 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
             "-init_hw_device", f"vulkan=vk:{vulkan_device}",
             "-filter_hw_device", "vk",
             "-hwaccel", "cuda", "-hwaccel_device", "0", "-hwaccel_output_format", "cuda",
-            "-i", str(source), "-filter_complex", _gpu_ffmpeg_filter(baked_lut),
+            "-i", str(source), "-filter_complex", _gpu_ffmpeg_filter(baked_lut, lut_profile),
             "-map", "[outv]", "-map", "0:a?",
             "-c:v", "hevc_nvenc", "-gpu", "0", "-preset", "p5", "-tune", "hq",
             "-profile:v", "main10", "-pix_fmt", "p010le",
@@ -378,14 +432,18 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
                 command, check=True, capture_output=True, text=True,
                 timeout=VIDEO_PROCESS_TIMEOUT_SECONDS,
             )
-            selected_backend = "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo LUT + NVENC"
+            selected_backend = (
+                "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo HLG LUT + NVENC"
+                if lut_profile == "hlg" else
+                "GPU decode (NVDEC) + NVIDIA Vulkan/libplacebo HLG-to-SDR BT.709 tone map + Rec.709 LUT + NVENC"
+            )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError("GPU video processing exceeded the 20-minute time limit.") from exc
         except subprocess.CalledProcessError as exc:
             output.unlink(missing_ok=True)
             detail = (exc.stderr or exc.stdout or "").strip()
             raise RuntimeError(
-                "GPU-only HDR export failed. CPU processing was not started. "
+                "GPU-only video export failed. CPU processing was not started. "
                 "NVIDIA Vulkan/CUDA/NVENC diagnostics: "
                 + (detail[-2400:] or "No FFmpeg diagnostic was returned.")
             ) from exc
@@ -398,9 +456,9 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
             "codec_profile": "Main 10",
             "pixel_format": "yuv420p10le",
             "bit_depth": 10,
-            "color_transfer": "arib-std-b67",
-            "color_primaries": "bt2020",
-            "color_matrix": "bt2020nc",
+            "color_transfer": "arib-std-b67" if lut_profile == "hlg" else "bt709",
+            "color_primaries": "bt2020" if lut_profile == "hlg" else "bt709",
+            "color_matrix": "bt2020nc" if lut_profile == "hlg" else "bt709",
         }
         mismatches = [
             f"{key}: expected {value!r}, got {output_metadata.get(key)!r}"
@@ -426,8 +484,9 @@ async def process_uploaded_video(
     video_file: UploadFile = File(...),
     cube: UploadFile = File(...),
     intensity: float = Form(1.0),
+    lut_profile: str = Form("hlg"),
 ) -> FileResponse:
-    """Apply an HLG/BT.2020 .cube LUT and export HDR HLG HEVC Main 10 MP4."""
+    """Apply a declared HLG or Rec.709 LUT to HLG source and verify the output."""
     filename = Path((video_file.filename or "video").replace(chr(92), "/")).name
     extension = Path(filename).suffix.lower()
     if extension not in SUPPORTED_VIDEO_EXTENSIONS:
@@ -436,6 +495,8 @@ async def process_uploaded_video(
         raise HTTPException(400, "LUT file must be .cube format.")
     if not 0.0 <= intensity <= 1.0:
         raise HTTPException(400, "LUT intensity must be between 0 and 1.")
+    if lut_profile not in {"hlg", "rec709"}:
+        raise HTTPException(400, "LUT profile must be 'hlg' or 'rec709'.")
     if not VIDEO_PROCESSING_SLOT.acquire(blocking=False):
         raise HTTPException(429, "The video processor is busy. Please retry when the current export finishes.")
 
@@ -446,7 +507,10 @@ async def process_uploaded_video(
         raise
     source = temp_dir / f"input{extension}"
     lut_path = temp_dir / "look.cube"
-    output = temp_dir / "photolut_hdr_hlg_bt2020_10bit.mp4"
+    output = temp_dir / (
+        "photolut_hdr_hlg_bt2020_10bit.mp4"
+        if lut_profile == "hlg" else "photolut_sdr_bt709_10bit.mp4"
+    )
     try:
         total = 0
         with source.open("wb") as stream:
@@ -467,7 +531,7 @@ async def process_uploaded_video(
         if lut_size == 0:
             raise HTTPException(400, "The uploaded LUT is empty.")
         processing_task = asyncio.create_task(
-            asyncio.to_thread(transcode_hlg_video, source, lut_path, output, intensity)
+            asyncio.to_thread(transcode_hlg_video, source, lut_path, output, intensity, lut_profile)
         )
         try:
             # Cancelling the request does not stop its FFmpeg worker thread.
@@ -490,10 +554,19 @@ async def process_uploaded_video(
         background_tasks.add_task(shutil.rmtree, temp_dir, ignore_errors=True)
         return FileResponse(
             output, media_type="video/mp4",
-            filename=f"{Path(filename).stem}_photolut_hdr_hlg_10bit.mp4",
+            filename=(
+                f"{Path(filename).stem}_photolut_hdr_hlg_10bit.mp4"
+                if lut_profile == "hlg" else
+                f"{Path(filename).stem}_photolut_sdr_rec709_10bit.mp4"
+            ),
             background=background_tasks,
-            headers={"X-PhotoLUT-HDR-Verified": "true", "X-PhotoLUT-HDR-Transfer": "arib-std-b67",
-                     "X-PhotoLUT-Processing-Device": processing_device},
+            headers={
+                "X-PhotoLUT-HDR-Verified": "true" if lut_profile == "hlg" else "false",
+                "X-PhotoLUT-Output-Transfer": "arib-std-b67" if lut_profile == "hlg" else "bt709",
+                "X-PhotoLUT-Output-Profile": lut_profile,
+                "X-PhotoLUT-Processing-Device": processing_device,
+                **({"X-PhotoLUT-HDR-Transfer": "arib-std-b67"} if lut_profile == "hlg" else {}),
+            },
         )
     except BaseException:
         shutil.rmtree(temp_dir, ignore_errors=True)
