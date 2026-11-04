@@ -4,7 +4,7 @@ PhotoLUT accepts **single-page, RGB/RGBA, unsigned 16-bit TIFF** input and creat
 
 The TIFF is interpreted as an SDR sRGB rendition. PhotoLUT reconstructs a highlight shoulder (default maximum content boost 4x), encodes a linear RGBA half-float HDR intent plus an SDR JPEG base, and asks libultrahdr to derive and embed the gain map. Both HDR and SDR intents are tagged with BT.709/sRGB primaries, and the configured maximum content boost is passed to the encoder as gain-map metadata. The output is probed by libultrahdr before it is accepted.
 
-The feature is available through `POST /api/ultrahdr/export` and the dedicated Ultra HDR panel in the web UI. The endpoint accepts a TIFF upload, JPEG quality (1–100), and maximum content boost (>1–8). Uploads are limited to 200 MiB and images to 80 megapixels; temporary files are removed after the response.
+The feature is available through `POST /api/ultrahdr/export` and the dedicated Ultra HDR panel in the web UI. The endpoint accepts a TIFF upload, JPEG quality (1–100), and maximum content boost (>1–8). Uploads are limited to 200 MiB and images to 24 megapixels; temporary files are removed after the response. The processing limit is intentionally conservative to bound peak RAM use.
 
 **Input restrictions:** only RGB or fully opaque RGBA, contiguous, unsigned 16-bit TIFF is accepted. Multi-page, grayscale, planar-separate, transparent, and non-uint16 TIFF files are rejected. If an ICC profile is present, it must be identifiable as sRGB; files without an embedded profile are treated as sRGB. Wide-gamut input must be converted to sRGB before export.
 
