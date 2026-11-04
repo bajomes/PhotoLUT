@@ -30,6 +30,10 @@ docker compose down
 - sRGB ICC profile embedding and best-effort metadata copying with ExifTool.
 - Original input filenames are retained for the result cards; output filenames are normalized for portable filesystem use.
 
+## Photo processing and GPU requirements
+
+The RAW-photo workflow currently uses rawpy/LibRaw for demosaicing and NumPy for tiled 3D LUT interpolation. These photo stages run on the CPU; Docker GPU passthrough does not automatically accelerate them. The NVIDIA GPU path described below applies to HLG video processing only. The application limits RAW processing to one heavy job by default and processes LUT interpolation in bounded tiles to reduce temporary memory, but CPU temperature and processing time still depend on the camera RAW dimensions, CPU cooling, and LibRaw workload. Do not interpret successful Docker startup or CPU-only CI as proof of photo GPU acceleration. GPU acceleration for RAW demosaicing must be implemented against a backend that explicitly supports the target GPU and verified on the actual NVIDIA hardware before it can be advertised as available.
+
 ## Video inspection (early foundation)
 
 - Upload MP4, MOV, M4V, or MKV files up to 512 MiB to `POST /api/video/inspect`.
