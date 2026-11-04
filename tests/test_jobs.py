@@ -147,3 +147,16 @@ def test_remove_job_output_rejects_non_terminal_job():
     finally:
         with jobs._lock:
             jobs._jobs.pop(job.id, None)
+
+
+
+def test_unknown_job_does_not_create_retained_output_lock():
+    unknown_id = "missing-job-id"
+    with jobs._lock:
+        jobs._output_locks.pop(unknown_id, None)
+
+    lock = jobs.output_lock(unknown_id)
+
+    assert lock is not None
+    with jobs._lock:
+        assert unknown_id not in jobs._output_locks
