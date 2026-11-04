@@ -61,6 +61,7 @@ def test_cleanup_waits_for_inflight_output_operation(tmp_path):
     with jobs._lock:
         assert job.id not in jobs._output_locks
 
+
 def test_cleanup_retains_job_while_output_response_is_streaming(tmp_path):
     job = jobs.create_job()
     job_dir = tmp_path / job.id
