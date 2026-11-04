@@ -109,7 +109,7 @@ def test_video_process_cancellation_keeps_gpu_slot_and_inputs_until_worker_exits
         )
         request = asyncio.create_task(
             video.process_uploaded_video(
-                video.BackgroundTasks(), video_upload, lut_upload, 1.0
+                video.BackgroundTasks(), video_upload, lut_upload, 1.0, "hlg"
             )
         )
         assert await asyncio.to_thread(started.wait, 2), "video worker did not start"
