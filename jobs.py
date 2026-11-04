@@ -41,6 +41,24 @@ class JobState:
 
 _jobs: dict[str, JobState] = {}
 _lock = threading.Lock()
+_output_locks: dict[str, threading.RLock] = {}
+
+
+def output_lock(job_id: str) -> threading.RLock:
+    """Return the per-job lock shared by archive creation and output removal."""
+    with _lock:
+        return _output_locks.setdefault(job_id, threading.RLock())
+
+
+def get_job_outputs_snapshot(job_id: str) -> tuple[JobStatus, list[dict]] | None:
+    """Return a detached output manifest while holding the registry lock."""
+    import copy
+
+    with _lock:
+        state = _jobs.get(job_id)
+        if state is None:
+            return None
+        return state.status, copy.deepcopy(state.outputs)
 
 
 def create_job() -> JobState:
@@ -73,13 +91,14 @@ def update_job(job_id: str, **kwargs) -> None:
 
 def remove_job_output(job_id: str, output_id: str) -> dict | None:
     """Atomically remove one completed export from a job's visible result set."""
-    with _lock:
-        state = _jobs.get(job_id)
-        if state is None or state.status != JobStatus.DONE:
-            return None
-        for index, output in enumerate(state.outputs):
-            if str(output.get("id", "")) == output_id:
-                return state.outputs.pop(index)
+    with output_lock(job_id):
+        with _lock:
+            state = _jobs.get(job_id)
+            if state is None or state.status != JobStatus.DONE:
+                return None
+            for index, output in enumerate(state.outputs):
+                if str(output.get("id", "")) == output_id:
+                    return state.outputs.pop(index)
     return None
 
 
