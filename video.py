@@ -48,6 +48,25 @@ def _parse_float(value: Any) -> float | None:
     return number if number >= 0 else None
 
 
+def _parse_frame_rate(value: Any) -> float | None:
+    """Parse an FFprobe frame-rate ratio, rejecting unknown or non-finite values."""
+    try:
+        numerator_text, denominator_text = str(value).split("/", 1)
+        numerator = float(numerator_text)
+        denominator = float(denominator_text)
+    except (TypeError, ValueError):
+        return None
+    if (
+        not np.isfinite(numerator)
+        or not np.isfinite(denominator)
+        or numerator <= 0
+        or denominator <= 0
+    ):
+        return None
+    rate = numerator / denominator
+    return rate if np.isfinite(rate) else None
+
+
 def normalize_probe_data(payload: dict[str, Any]) -> dict[str, Any]:
     streams = payload.get("streams") or []
     stream = next((item for item in streams if item.get("codec_type") == "video"), None)
@@ -86,13 +105,19 @@ def normalize_probe_data(payload: dict[str, Any]) -> dict[str, Any]:
                 ) if key in item
             })
     hdr_side_data.sort(key=lambda item: str(item.get("side_data_type", "")))
-    try:
-        fps_num, fps_den = str(stream.get("avg_frame_rate") or stream.get("r_frame_rate") or "0/1").split("/", 1)
-        fps = float(fps_num) / float(fps_den) if float(fps_den) else None
-    except (TypeError, ValueError, ZeroDivisionError):
-        fps = None
+    frame_rate = stream.get("avg_frame_rate")
+    fps = _parse_frame_rate(frame_rate)
+    if fps is None:
+        # FFprobe can report avg_frame_rate as 0/0 or N/A for variable-rate
+        # and some container streams. Use r_frame_rate when it is valid.
+        fallback_rate = stream.get("r_frame_rate")
+        fallback_fps = _parse_frame_rate(fallback_rate)
+        if fallback_fps is not None:
+            frame_rate, fps = fallback_rate, fallback_fps
+        elif frame_rate is None:
+            frame_rate = fallback_rate
     width, height = stream.get("width"), stream.get("height")
-    is_4k30 = bool(width and height and max(width, height) >= 3840 and min(width, height) >= 2160 and fps is not None and abs(fps - 30) <= 0.1)
+    is_4k30 = bool(width and height and max(width, height) >= 3840 and min(width, height) >= 2160 and fps is not None and fps >= 29.9)
     hdr_format = ("Dolby Vision" if dolby_vision else
                   "HDR10 / PQ" if is_pq else "HLG" if is_hlg else
                   "SDR / BT.709" if transfer == "bt709" else "Unknown")
@@ -118,7 +143,7 @@ def normalize_probe_data(payload: dict[str, Any]) -> dict[str, Any]:
         "height": stream.get("height"),
         "pixel_format": stream.get("pix_fmt"),
         "bit_depth": depth,
-        "frame_rate": stream.get("avg_frame_rate") or stream.get("r_frame_rate"),
+        "frame_rate": frame_rate,
         "duration_seconds": _parse_float(fmt.get("duration")),
         "container": fmt.get("format_name"),
         "color_transfer": transfer,
