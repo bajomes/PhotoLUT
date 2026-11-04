@@ -89,6 +89,7 @@ def test_cleanup_retains_job_while_output_response_is_streaming(tmp_path):
     assert not job_dir.exists()
     assert jobs.get_job(job.id) is None
 
+
 def test_job_status_snapshot_is_detached_from_later_updates():
     job = jobs.create_job()
     initial_outputs = [{"id": "0", "filename": "first.nef"}]
