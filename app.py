@@ -383,16 +383,29 @@ async def export_ultrahdr_photo(
     if not PROCESSING_SLOTS.acquire(blocking=False):
         raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
 
-    job_dir = Path(tempfile.mkdtemp(prefix="photolut-ultrahdr-", dir=WORK_DIR))
-    source = job_dir / "input.tiff"
-    output = job_dir / f"{_safe_output_stem(filename)}_ultrahdr.jpg"
+    job_dir: Path | None = None
     try:
+        # Create the job directory only after entering the cleanup/release guard;
+        # filesystem errors must not leak the processing semaphore slot.
+        job_dir = Path(tempfile.mkdtemp(prefix="photolut-ultrahdr-", dir=WORK_DIR))
+        source = job_dir / "input.tiff"
+        output = job_dir / f"{_safe_output_stem(filename)}_ultrahdr.jpg"
         await _save_upload(tiff_file, source, hdr_photo.MAX_TIFF_BYTES,
                            hdr_photo.MAX_TIFF_BYTES)
-        result = await asyncio.to_thread(
+        encode_task = asyncio.create_task(asyncio.to_thread(
             hdr_photo.export_ultrahdr, source, output,
             quality=quality, max_boost=max_boost,
-        )
+        ))
+        try:
+            result = await asyncio.shield(encode_task)
+        except asyncio.CancelledError:
+            # A cancelled request does not stop its worker thread. Wait for it
+            # before the finally block removes its directory or releases its slot.
+            try:
+                await encode_task
+            except Exception:
+                pass
+            raise
         if not output.is_file() or not result.get("gain_map_verified"):
             raise HTTPException(422, "Ultra HDR encoder did not produce a verified gain map")
         return FileResponse(
@@ -401,17 +414,22 @@ async def export_ultrahdr_photo(
             background=BackgroundTask(shutil.rmtree, job_dir, ignore_errors=True),
         )
     except HTTPException:
-        shutil.rmtree(job_dir, ignore_errors=True)
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
         raise
     except ValueError as exc:
-        shutil.rmtree(job_dir, ignore_errors=True)
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(422, str(exc)) from exc
     except RuntimeError as exc:
-        shutil.rmtree(job_dir, ignore_errors=True)
-        status = 503 if "not installed" in str(exc).lower() else 422
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        message = str(exc).lower()
+        status = 503 if "not installed" in message else 504 if "timed out" in message else 422
         raise HTTPException(status, str(exc)) from exc
     except Exception as exc:
-        shutil.rmtree(job_dir, ignore_errors=True)
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(500, "Ultra HDR export failed") from exc
     finally:
         PROCESSING_SLOTS.release()
