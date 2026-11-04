@@ -327,7 +327,7 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
             ffmpeg, "-hide_banner", "-loglevel", "warning", "-y",
             "-init_hw_device", f"vulkan=vk:{vulkan_device}",
             "-filter_hw_device", "vk",
-            "-hwaccel", "cuda", "-hwaccel_output_format", "cuda",
+            "-hwaccel", "cuda", "-hwaccel_device", "0", "-hwaccel_output_format", "cuda",
             "-i", str(source), "-filter_complex", _gpu_ffmpeg_filter(baked_lut),
             "-map", "[outv]", "-map", "0:a?",
             "-c:v", "hevc_nvenc", "-preset", "p5", "-tune", "hq",
