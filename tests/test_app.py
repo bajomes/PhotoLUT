@@ -164,7 +164,7 @@ def test_zip_snapshot_remains_valid_after_output_removal(tmp_path, monkeypatch):
 
     try:
         first_response = app.download_zip(job_id, "all")
-        first_archive = first_response.path
+        first_archive = app.Path(first_response.path)
         with zipfile.ZipFile(first_archive) as archive:
             assert sorted(archive.namelist()) == ["sample.jpg", "sample.tiff"]
             assert archive.testzip() is None
@@ -176,7 +176,7 @@ def test_zip_snapshot_remains_valid_after_output_removal(tmp_path, monkeypatch):
             assert archive.testzip() is None
 
         second_response = app.download_zip(job_id, "all")
-        assert second_response.path != first_archive
+        assert app.Path(second_response.path) != first_archive
         with zipfile.ZipFile(second_response.path) as archive:
             assert archive.namelist() == []
             assert archive.testzip() is None
