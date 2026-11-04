@@ -269,7 +269,7 @@ def test_transcode_never_falls_back_to_cpu_when_gpu_path_fails(tmp_path: Path):
         with pytest.raises(RuntimeError, match="CPU processing was not started"):
             video.transcode_hlg_video(source, lut, output, 1.0)
 
-    assert run.call_count == 4
+    assert run.call_count == 1
     assert not output.exists()
 
 
