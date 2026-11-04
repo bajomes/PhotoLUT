@@ -6,7 +6,7 @@ The TIFF is interpreted as an SDR sRGB rendition. PhotoLUT reconstructs a highli
 
 The feature is available through `POST /api/ultrahdr/export` and the dedicated Ultra HDR panel in the web UI. The endpoint accepts a TIFF upload, JPEG quality (1–100), and maximum content boost (>1–8). Uploads are limited to 200 MiB and images to 24 megapixels; temporary files are removed after the response. The processing limit is intentionally conservative to bound peak RAM use.
 
-**Input restrictions:** only RGB or fully opaque RGBA, contiguous, unsigned 16-bit TIFF is accepted. Multi-page, grayscale, planar-separate, transparent, and non-uint16 TIFF files are rejected. If an ICC profile is present, it must be identifiable as sRGB; files without an embedded profile are treated as sRGB. Wide-gamut input must be converted to sRGB before export.
+**Input restrictions:** only RGB or fully opaque RGBA, contiguous, unsigned 16-bit TIFF is accepted. Multi-page, grayscale, planar-separate, transparent, and non-uint16 TIFF files are rejected. If an ICC profile is present, its RGB-to-sRGB color transform must be effectively identity; files without an embedded profile are treated as sRGB. Wide-gamut input must be converted to sRGB before export.
 
 **Important:** this is inverse-tone-mapped HDR, not recovery of HDR data that was never present in an SDR TIFF. The reconstructed highlights are an estimated rendering. The feature remains experimental until representative photos have been visually reviewed on HDR-capable physical devices. Platform recompression may also alter or remove HDR metadata.
 
