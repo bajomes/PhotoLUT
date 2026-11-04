@@ -278,11 +278,11 @@ def _gpu_ffmpeg_filter(lut_path: Path) -> str:
     """Upload decoded 10-bit frames to Vulkan and run the .cube LUT on GPU."""
     lut = str(lut_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
     return (
-        "[0:v]format=yuv420p10le,hwupload,"
-        f"libplacebo=lut='{lut}':lut_type=native:format=yuv420p10le:"
+        "[0:v]hwdownload,format=p010le,hwupload,"
+        f"libplacebo=lut='{lut}':lut_type=native:format=p010le:"
         "colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67:"
         "range=tv:peak_detect=false,"
-        "hwdownload,format=yuv420p10le,format=p010le[outv]"
+        "hwdownload,format=p010le[outv]"
     )
 
 
@@ -332,61 +332,53 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         "-colorspace", "bt2020nc",
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
     ]
-    encoder_options = [
-        [
-            "-c:v", "hevc_nvenc", "-preset", "p5", "-tune", "hq",
-            "-profile:v", "main10", "-pix_fmt", "p010le",
-            "-rc", "vbr", "-cq", "19", "-b:v", "0",
-            "-spatial_aq", "1", "-temporal_aq", "1",
-        ],
-        [
-            "-c:v", "libx265", "-preset", "medium", "-crf", "18",
-            "-pix_fmt", "yuv420p10le",
-            "-x265-params",
-            "repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
-        ],
-    ]
+    if not _supports_gpu_lut(ffmpeg):
+        raise RuntimeError(
+            "GPU export is unavailable: this FFmpeg build does not expose libplacebo custom .cube LUT support. "
+            "CPU fallback is disabled to prevent unexpectedly high CPU load."
+        )
 
-    processing_paths: list[tuple[str, str, bool, bool]] = []
-    if _supports_gpu_lut(ffmpeg):
-        processing_paths.append(("GPU decode (NVDEC) + Vulkan/libplacebo LUT + NVENC", _gpu_ffmpeg_filter(baked_lut), True, True))
-    processing_paths.append(("CPU LUT (zscale/lut3d) + NVENC", _ffmpeg_filter(lut_path, intensity), False, False))
-
-    last_error: subprocess.CalledProcessError | None = None
+    last_errors: list[str] = []
     selected_backend: str | None = None
     try:
-        for backend, filter_graph, use_vulkan, use_nvdec in processing_paths:
-            common_command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y"]
-            if use_vulkan:
-                common_command += ["-init_hw_device", "vulkan=vk:0", "-filter_hw_device", "vk"]
-            if use_nvdec:
-                # NVDEC decodes on the NVIDIA GPU. Frames are downloaded for
-                # the Vulkan upload performed by _gpu_ffmpeg_filter.
-                common_command += ["-hwaccel", "cuda"]
-            common_command += [
-                "-i", str(source), "-filter_complex", filter_graph,
+        # Hybrid laptops may enumerate the NVIDIA Vulkan device after an iGPU.
+        # Try the first four Vulkan physical-device indices; never silently run a CPU grade.
+        for vulkan_index in range(4):
+            common_command = [
+                ffmpeg, "-hide_banner", "-loglevel", "warning", "-y",
+                "-init_hw_device", f"vulkan=vk:{vulkan_index}",
+                "-filter_hw_device", "vk",
+                "-hwaccel", "cuda", "-hwaccel_output_format", "cuda",
+                "-i", str(source), "-filter_complex", _gpu_ffmpeg_filter(baked_lut),
                 "-map", "[outv]", "-map", "0:a?",
+                "-c:v", "hevc_nvenc", "-preset", "p5", "-tune", "hq",
+                "-profile:v", "main10", "-pix_fmt", "p010le",
+                "-rc", "vbr", "-cq", "19", "-b:v", "0",
+                "-spatial_aq", "1", "-temporal_aq", "1",
             ]
-            for options in encoder_options:
-                command = common_command + options + output_metadata_args
-                try:
-                    subprocess.run(
-                        command, check=True, capture_output=True, text=True,
-                        timeout=VIDEO_PROCESS_TIMEOUT_SECONDS,
-                    )
-                    selected_backend = backend
-                    break
-                except subprocess.TimeoutExpired as exc:
-                    raise RuntimeError("Video processing exceeded the 20-minute time limit.") from exc
-                except subprocess.CalledProcessError as exc:
-                    output.unlink(missing_ok=True)
-                    last_error = exc
-            if selected_backend:
+            command = common_command + output_metadata_args
+            try:
+                subprocess.run(
+                    command, check=True, capture_output=True, text=True,
+                    timeout=VIDEO_PROCESS_TIMEOUT_SECONDS,
+                )
+                selected_backend = (
+                    f"GPU decode (NVDEC) + Vulkan/libplacebo LUT (device {vulkan_index}) + NVENC"
+                )
                 break
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError("GPU video processing exceeded the 20-minute time limit.") from exc
+            except subprocess.CalledProcessError as exc:
+                output.unlink(missing_ok=True)
+                detail = (exc.stderr or exc.stdout or "").strip()
+                last_errors.append(f"Vulkan device {vulkan_index}: {detail[-1200:]}")
 
         if selected_backend is None:
-            detail = (last_error.stderr or "").strip() if last_error else ""
-            raise ValueError(detail[-1000:] or "FFmpeg could not process this video.")
+            detail = "\\n".join(last_errors[-4:])
+            raise RuntimeError(
+                "GPU-only HDR export failed. CPU processing was not started. "
+                "FFmpeg diagnostics:\\n" + (detail or "No FFmpeg diagnostic was returned.")
+            )
         if not output.is_file() or output.stat().st_size == 0:
             raise RuntimeError("FFmpeg did not produce a valid output file.")
 
