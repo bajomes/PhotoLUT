@@ -1,6 +1,6 @@
 # PhotoLUT
 
-PhotoLUT applies a 3D `.cube` creative LUT to RAW photographs and exports ready-to-use TIFF and JPEG files. It also includes an HDR video workflow for metadata inspection and HLG/BT.2020 LUT grading to HEVC Main 10 HDR MP4. Processing runs locally in the Docker container; media are not sent to a third-party image service.
+PhotoLUT applies a 3D `.cube` creative LUT to RAW photographs and exports ready-to-use TIFF and JPEG files. It also includes an HLG/BT.2020 video workflow that can export either HDR HLG/BT.2020 or tone-mapped SDR/BT.709 HEVC Main 10, depending on the selected LUT profile. Processing runs locally in the Docker container; media are not sent to a third-party image service.
 
 ## Quick start
 
