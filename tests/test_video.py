@@ -400,7 +400,7 @@ def test_transcode_removes_partial_output_when_ffmpeg_fails(tmp_path: Path):
             Path(command[-1]).write_bytes(b"partial")
             raise subprocess.CalledProcessError(1, command, stderr="encode failed")
         run.side_effect = fake_run
-        with pytest.raises(RuntimeError, match="GPU-only HDR export failed"):
+        with pytest.raises(RuntimeError, match="GPU-only video export failed"):
             video.transcode_hlg_video(source, lut, output, 1.0)
     assert run.call_count == 1
     assert not output.exists()
@@ -531,7 +531,7 @@ def test_transcode_cleans_partial_temporary_lut_when_write_fails(tmp_path: Path)
     source.write_bytes(b"video")
     lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8)
 
-    def fail_after_partial_write(_lut, _intensity, path):
+    def fail_after_partial_write(_lut, _intensity, path, _lut_profile="hlg"):
         path.write_text("partial")
         raise OSError("disk full")
 
@@ -575,9 +575,9 @@ def test_intensity_lut_preserves_custom_domain_for_libplacebo(tmp_path: Path):
 def test_intensity_lut_bakes_rec709_linear_mix(tmp_path: Path):
     source = tmp_path / "identity-rec709.cube"
     source.write_text(
-        "LUT_3D_SIZE 2\\n"
-        "0 0 0\\n1 0 0\\n0 1 0\\n1 1 0\\n"
-        "0 0 1\\n1 0 1\\n0 1 1\\n1 1 1\\n",
+        "LUT_3D_SIZE 2\n"
+        "0 0 0\n1 0 0\n0 1 0\n1 1 0\n"
+        "0 0 1\n1 0 1\n0 1 1\n1 1 1\n",
         encoding="ascii",
     )
     parsed = video.core.parse_cube(source)
@@ -606,7 +606,7 @@ def test_gpu_filter_tone_maps_hlg_before_rec709_lut(tmp_path: Path):
 def test_transcode_exports_rec709_lut_as_verified_sdr_bt709(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "sedona.cube", "out.mp4"))
     source.write_bytes(b"video")
-    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8, encoding="ascii")
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8, encoding="ascii")
     output_metadata = {
         "codec": "hevc", "codec_profile": "Main 10",
         "pixel_format": "yuv420p10le", "bit_depth": 10,
@@ -641,7 +641,7 @@ def test_transcode_exports_rec709_lut_as_verified_sdr_bt709(tmp_path: Path):
 def test_transcode_rejects_unknown_lut_profile_before_ffmpeg(tmp_path: Path):
     source, lut, output = (tmp_path / name for name in ("in.mp4", "look.cube", "out.mp4"))
     source.write_bytes(b"video")
-    lut.write_text("LUT_3D_SIZE 2\\n" + "0 0 0\\n" * 8, encoding="ascii")
+    lut.write_text("LUT_3D_SIZE 2\n" + "0 0 0\n" * 8, encoding="ascii")
     with patch("video.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
         "video.inspect_video", return_value={"hlg_metadata_complete": True}
     ), patch("video.subprocess.run") as run:
@@ -654,7 +654,7 @@ def test_transcode_rejects_unknown_lut_profile_before_ffmpeg(tmp_path: Path):
 def test_rec709_intensity_blends_in_bt1886_linear_light(tmp_path: Path):
     source = tmp_path / "constant-rec709.cube"
     source.write_text(
-        "LUT_3D_SIZE 2\\n" + "0.5 0.5 0.5\\n" * 8,
+        "LUT_3D_SIZE 2\n" + "0.5 0.5 0.5\n" * 8,
         encoding="ascii",
     )
     parsed = video.core.parse_cube(source)
@@ -690,7 +690,7 @@ def test_video_api_returns_sdr_headers_for_rec709_profile(monkeypatch):
         )
         lut_upload = UploadFile(
             filename="sedona.cube",
-            file=io.BytesIO(b"LUT_3D_SIZE 2\\n" + b"0 0 0\\n" * 8),
+            file=io.BytesIO(b"LUT_3D_SIZE 2\n" + b"0 0 0\n" * 8),
         )
         response = await video.process_uploaded_video(
             video.BackgroundTasks(), video_upload, lut_upload, 0.4, "rec709"
