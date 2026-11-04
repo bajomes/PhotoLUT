@@ -178,7 +178,7 @@ def test_transcode_invokes_ffmpeg_as_ten_bit_hlg_bt2020(tmp_path: Path):
     assert command[command.index("-colorspace") + 1] == "bt2020nc"
     graph = command[command.index("-filter_complex") + 1]
     assert "tonemap=" not in graph
-    assert "transfer=arib-std-b67" in graph
+    assert "color_trc=arib-std-b67" in graph
     assert "libplacebo=lut=" in graph
     assert output.read_bytes() == b"mp4"
 
@@ -238,8 +238,9 @@ def test_transcode_removes_partial_output_when_ffmpeg_fails(tmp_path: Path):
             Path(command[-1]).write_bytes(b"partial")
             raise subprocess.CalledProcessError(1, command, stderr="encode failed")
         run.side_effect = fake_run
-        with pytest.raises(ValueError, match="encode failed"):
+        with pytest.raises(RuntimeError, match="GPU-only HDR export failed"):
             video.transcode_hlg_video(source, lut, output, 1.0)
+    assert run.call_count == 4
     assert not output.exists()
 
 
