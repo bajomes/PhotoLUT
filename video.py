@@ -308,7 +308,6 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
         )
 
     baked_lut = output.with_name("photolut-intensity-hlg.cube")
-    _write_intensity_lut(parsed_lut, intensity, baked_lut)
 
     output_metadata_args = [
         "-tag:v", "hvc1", "-color_range", "tv",
@@ -319,6 +318,7 @@ def transcode_hlg_video(source: Path, lut_path: Path, output: Path, intensity: f
 
     selected_backend: str | None = None
     try:
+        _write_intensity_lut(parsed_lut, intensity, baked_lut)
         # Select Vulkan by vendor name instead of an unstable physical-device index.
         # This prevents a hybrid laptop from silently grading on its integrated GPU
         # or a software Vulkan implementation.
