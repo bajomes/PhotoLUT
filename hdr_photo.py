@@ -63,7 +63,7 @@ def _load_tiff(path: Path) -> tuple[np.ndarray, bytes | None]:
         if samples not in (3, 4):
             raise ValueError("TIFF must contain RGB or RGBA samples")
         if int(page.imagewidth) * int(page.imagelength) > MAX_PIXELS:
-            raise ValueError("TIFF exceeds the 80 megapixel limit")
+            raise ValueError("TIFF exceeds the 24 megapixel limit")
         pixels = page.asarray()
         icc_tag = page.tags.get("InterColorProfile")
         icc = bytes(icc_tag.value) if icc_tag is not None else None
@@ -71,7 +71,7 @@ def _load_tiff(path: Path) -> tuple[np.ndarray, bytes | None]:
     if pixels.ndim != 3 or pixels.shape[-1] != samples:
         raise ValueError("TIFF must use contiguous RGB or RGBA pixel data")
     if pixels.shape[0] * pixels.shape[1] > MAX_PIXELS:
-        raise ValueError("TIFF exceeds the 80 megapixel limit")
+        raise ValueError("TIFF exceeds the 24 megapixel limit")
     if pixels.dtype != np.uint16:
         raise ValueError("TIFF pixel data must be unsigned 16-bit")
     if samples == 4 and np.any(pixels[..., 3] != 65535):
