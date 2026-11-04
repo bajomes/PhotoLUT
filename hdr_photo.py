@@ -32,14 +32,31 @@ def _linear_to_srgb(values: np.ndarray) -> np.ndarray:
 
 
 def _is_srgb_profile(profile_bytes: bytes) -> bool:
-    """Only pass through profiles explicitly identified as sRGB."""
+    """Accept ICC profiles whose actual RGB-to-sRGB transform is effectively identity.
+
+    Profile descriptions are user-editable metadata and are not proof of gamut.
+    Compare a dense RGB patch grid through the embedded profile instead.
+    """
     try:
-        description = ImageCms.getProfileDescription(
-            ImageCms.ImageCmsProfile(io.BytesIO(profile_bytes))
+        source_profile = ImageCms.ImageCmsProfile(io.BytesIO(profile_bytes))
+        srgb_profile = ImageCms.createProfile("sRGB")
+        levels = np.arange(0, 256, 32, dtype=np.uint8)
+        patches = np.array(
+            [(r, g, b) for r in levels for g in levels for b in levels],
+            dtype=np.uint8,
+        ).reshape(1, -1, 3)
+        probe = Image.fromarray(patches, "RGB")
+        converted = ImageCms.profileToProfile(
+            probe, source_profile, srgb_profile, outputMode="RGB",
+            renderingIntent=0,
+        )
+        difference = np.abs(
+            np.asarray(converted, dtype=np.int16) -
+            np.asarray(probe, dtype=np.int16)
         )
     except Exception as exc:
-        raise ValueError("TIFF contains an unreadable ICC profile") from exc
-    return "srgb" in description.lower()
+        raise ValueError("TIFF contains an unreadable or unsupported ICC profile") from exc
+    return int(difference.max(initial=0)) <= 2
 
 
 def _load_tiff(path: Path) -> tuple[np.ndarray, bytes | None]:
