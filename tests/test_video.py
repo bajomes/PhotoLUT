@@ -455,8 +455,12 @@ def test_gpu_filter_routes_lut_through_vulkan_libplacebo(tmp_path: Path):
     assert ":format=" not in graph
     assert "format=p010le,hwupload_cuda[outv]" in graph
     assert "hwupload," not in graph
-    assert "bt2020" in graph
-    assert "arib-std-b67" in graph
+    # Keep the source HLG/BT.2020 metadata instead of forcing a
+    # libplacebo output conversion that can change an identity-LUT result.
+    assert "colorspace=" not in graph
+    assert "color_primaries=" not in graph
+    assert "color_trc=" not in graph
+    assert "range=" not in graph
 
 
 def test_intensity_lut_bakes_hlg_linear_mix(tmp_path: Path):
