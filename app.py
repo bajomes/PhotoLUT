@@ -296,8 +296,22 @@ async def preview(raw_file: UploadFile, cube: UploadFile,
             if not PROCESSING_SLOTS.acquire(blocking=False):
                 raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
             slot_acquired = True
+            render_task = asyncio.create_task(
+                asyncio.to_thread(_render_preview, raw_path, cube_path, colorspace)
+            )
             try:
-                return await asyncio.to_thread(_render_preview, raw_path, cube_path, colorspace)
+                # Shield the worker from request cancellation. Cancelling an
+                # asyncio.to_thread await does not stop its thread; keep the
+                # processing slot and temporary input files until it exits.
+                return await asyncio.shield(render_task)
+            except asyncio.CancelledError:
+                try:
+                    await render_task
+                except Exception:
+                    # Preserve request cancellation; the worker's error is
+                    # secondary once the client has disconnected.
+                    pass
+                raise
             except Exception as exc:
                 raise HTTPException(
                     422, "Could not generate preview. Check the RAW photo and .cube LUT."
