@@ -60,3 +60,30 @@ def test_cleanup_waits_for_inflight_output_operation(tmp_path):
     assert not job_dir.exists()
     with jobs._lock:
         assert job.id not in jobs._output_locks
+
+def test_cleanup_retains_job_while_output_response_is_streaming(tmp_path):
+    job = jobs.create_job()
+    job_dir = tmp_path / job.id
+    job_dir.mkdir()
+    jobs.update_job(job.id, status=jobs.JobStatus.DONE)
+    now = time.time()
+
+    with jobs._lock:
+        jobs._jobs[job.id].finished_at = now - 120
+
+    assert jobs.acquire_output_lease(job.id)
+    assert jobs.acquire_output_lease(job.id)
+    assert jobs.has_output_leases(job.id)
+
+    assert job.id not in jobs._cleanup_once(tmp_path, max_age=60, now=now)
+    assert job_dir.is_dir()
+    assert jobs.get_job(job.id) is not None
+
+    jobs.release_output_lease(job.id)
+    assert jobs.has_output_leases(job.id)
+    jobs.release_output_lease(job.id)
+    assert not jobs.has_output_leases(job.id)
+
+    assert job.id in jobs._cleanup_once(tmp_path, max_age=60, now=now)
+    assert not job_dir.exists()
+    assert jobs.get_job(job.id) is None
