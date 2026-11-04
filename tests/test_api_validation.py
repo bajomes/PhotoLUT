@@ -89,13 +89,15 @@ def test_preview_cancellation_keeps_processing_slot_until_worker_exits(monkeypat
     started = threading.Event()
     finish = threading.Event()
     events = []
+    worker_paths = {}
 
     async def save_upload(upload, dest, max_bytes, remaining_total_bytes):
         payload = await upload.read()
         dest.write_bytes(payload)
         return len(payload)
 
-    def render_preview(*_args):
+    def render_preview(raw_path, cube_path, *_args):
+        worker_paths.update(raw=raw_path, cube=cube_path)
         started.set()
         if not finish.wait(timeout=5):
             raise TimeoutError("test did not release preview worker")
@@ -128,11 +130,15 @@ def test_preview_cancellation_keeps_processing_slot_until_worker_exits(monkeypat
         # the processing slot and the TemporaryDirectory input files.
         assert not request.done()
         assert events == ["acquire"]
+        assert worker_paths["raw"].is_file()
+        assert worker_paths["cube"].is_file()
 
         finish.set()
         with pytest.raises(asyncio.CancelledError):
             await request
         assert events == ["acquire", "release"]
+        assert not worker_paths["raw"].exists()
+        assert not worker_paths["cube"].exists()
 
     try:
         asyncio.run(exercise())
