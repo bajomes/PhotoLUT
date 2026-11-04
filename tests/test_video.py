@@ -32,6 +32,45 @@ HLG_PAYLOAD = {
 }
 
 
+def test_video_inspection_cancellation_keeps_source_until_ffprobe_exits(monkeypatch):
+    started = threading.Event()
+    finish = threading.Event()
+    worker_paths = {}
+
+    def inspect_video(path):
+        worker_paths["source"] = path
+        started.set()
+        if not finish.wait(timeout=5):
+            raise TimeoutError("test did not release FFprobe worker")
+        return {"filename": None}
+
+    monkeypatch.setattr(video, "inspect_video", inspect_video)
+
+    async def exercise():
+        upload = UploadFile(filename="source.mp4", file=io.BytesIO(b"video-source"))
+        request = asyncio.create_task(video.inspect_uploaded_video(upload))
+        assert await asyncio.to_thread(started.wait, 2), "FFprobe worker did not start"
+
+        request.cancel()
+        await asyncio.sleep(0.05)
+
+        assert not request.done()
+        assert worker_paths["source"].is_file()
+        assert not upload.file.closed
+
+        finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await request
+
+        assert not worker_paths["source"].exists()
+        assert upload.file.closed
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        finish.set()
+
+
 def test_video_process_cancellation_keeps_gpu_slot_and_inputs_until_worker_exits(
     tmp_path, monkeypatch
 ):
