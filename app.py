@@ -18,6 +18,7 @@ import numpy as np
 import tifffile
 from fastapi import FastAPI, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
@@ -397,6 +398,8 @@ def delete_job_output(job_id: str, output_id: str) -> dict:
     if not job_id.isalnum() or not output_id.isdecimal():
         raise HTTPException(400, "Invalid request")
     with jobs.output_lock(job_id):
+        if jobs.has_output_leases(job_id):
+            raise HTTPException(409, "A result download is in progress. Retry removal when it finishes.")
         removed = jobs.remove_job_output(job_id, output_id)
         if removed is None:
             raise HTTPException(404, "Export item not found")
@@ -477,10 +480,14 @@ def download_zip(
             finally:
                 temp_path.unlink(missing_ok=True)
 
+        if not jobs.acquire_output_lease(job_id):
+            raise HTTPException(404, "Job results are no longer available")
+
     return FileResponse(
         zip_path,
         filename=f"{download_name}.zip",
         media_type="application/zip",
+        background=BackgroundTask(jobs.release_output_lease, job_id),
     )
 
 
@@ -488,11 +495,18 @@ def download_zip(
 def get_file(job_id: str, name: str) -> FileResponse:
     if not job_id.isalnum() or ".." in name or "/" in name:
         raise HTTPException(400, "Invalid request")
-    out_dir = (WORK_DIR / job_id / "out").resolve()
-    path = (out_dir / name).resolve()
-    if path.parent != out_dir or not path.is_file():
-        raise HTTPException(404, "File not found")
-    return FileResponse(path, filename=name)
+    with jobs.output_lock(job_id):
+        out_dir = (WORK_DIR / job_id / "out").resolve()
+        path = (out_dir / name).resolve()
+        if path.parent != out_dir or not path.is_file():
+            raise HTTPException(404, "File not found")
+        if not jobs.acquire_output_lease(job_id):
+            raise HTTPException(404, "File not found")
+    return FileResponse(
+        path,
+        filename=name,
+        background=BackgroundTask(jobs.release_output_lease, job_id),
+    )
 
 
 app.mount("/", StaticFiles(directory=BASE_DIR / "static", html=True), name="static")
