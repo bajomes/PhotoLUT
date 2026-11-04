@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import asyncio
+import io
 import json
 import subprocess
+import threading
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 import video
+from starlette.datastructures import UploadFile
 
 
 HLG_PAYLOAD = {
@@ -26,6 +30,74 @@ HLG_PAYLOAD = {
     }],
     "format": {"duration": "12.5", "format_name": "mov,mp4,m4a,3gp,3g2,mj2"},
 }
+
+
+def test_video_process_cancellation_keeps_gpu_slot_and_inputs_until_worker_exits(
+    tmp_path, monkeypatch
+):
+    started = threading.Event()
+    finish = threading.Event()
+    events = []
+    worker_paths = {}
+
+    def transcode(source, lut_path, output, _intensity):
+        worker_paths.update(
+            source=source, lut=lut_path, output=output, temp_dir=source.parent
+        )
+        started.set()
+        if not finish.wait(timeout=5):
+            raise TimeoutError("test did not release video worker")
+        output.write_bytes(b"verified-video")
+        return "GPU test backend"
+
+    class Slots:
+        def acquire(self, blocking=False):
+            events.append("acquire")
+            return True
+
+        def release(self):
+            events.append("release")
+
+    monkeypatch.setattr(video, "VIDEO_PROCESSING_SLOT", Slots())
+    monkeypatch.setattr(video, "transcode_hlg_video", transcode)
+
+    async def exercise():
+        video_upload = UploadFile(
+            filename="source.mp4", file=io.BytesIO(b"video-source")
+        )
+        lut_upload = UploadFile(
+            filename="look.cube", file=io.BytesIO(b"LUT_3D_SIZE 2\n")
+        )
+        request = asyncio.create_task(
+            video.process_uploaded_video(
+                video.BackgroundTasks(), video_upload, lut_upload, 1.0
+            )
+        )
+        assert await asyncio.to_thread(started.wait, 2), "video worker did not start"
+
+        request.cancel()
+        await asyncio.sleep(0.05)
+
+        # The client request is cancelled, but FFmpeg's worker still owns its
+        # processing slot and needs both uploaded files until it exits.
+        assert not request.done()
+        assert events == ["acquire"]
+        assert worker_paths["source"].is_file()
+        assert worker_paths["lut"].is_file()
+
+        finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await request
+
+        assert events == ["acquire", "release"]
+        assert not worker_paths["temp_dir"].exists()
+        assert video_upload.file.closed
+        assert lut_upload.file.closed
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        finish.set()
 
 
 def test_normalize_identifies_complete_hlg10_metadata():
