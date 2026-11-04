@@ -47,6 +47,9 @@ _output_locks: dict[str, threading.RLock] = {}
 def output_lock(job_id: str) -> threading.RLock:
     """Return the per-job lock shared by archive creation and output removal."""
     with _lock:
+        # Invalid or expired IDs must not grow the lock registry indefinitely.
+        if job_id not in _jobs:
+            return threading.RLock()
         return _output_locks.setdefault(job_id, threading.RLock())
 
 
