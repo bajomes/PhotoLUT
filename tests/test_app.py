@@ -203,3 +203,37 @@ def test_zip_snapshot_remains_valid_after_output_removal(tmp_path, monkeypatch):
             app.jobs._jobs.pop(job_id, None)
             app.jobs._output_locks.pop(job_id, None)
             app.jobs._active_output_leases.pop(job_id, None)
+
+def test_delete_job_output_rejects_active_download_lease(tmp_path, monkeypatch):
+    job = app.jobs.create_job()
+    job_id = job.id
+    out_dir = tmp_path / job_id / "out"
+    out_dir.mkdir(parents=True)
+    for name in ("before.jpg", "after.jpg", "sample.tiff", "sample.jpg"):
+        (out_dir / name).write_bytes(b"data")
+    outputs = [{
+        "id": "0", "filename": "sample.nef",
+        "preview_before": f"/files/{job_id}/before.jpg",
+        "preview_after": f"/files/{job_id}/after.jpg",
+        "download_tiff": f"/files/{job_id}/sample.tiff",
+        "download_jpeg": f"/files/{job_id}/sample.jpg",
+    }]
+    app.jobs.update_job(job_id, status=app.jobs.JobStatus.DONE, outputs=outputs)
+    monkeypatch.setattr(app, "WORK_DIR", tmp_path)
+
+    try:
+        assert app.jobs.acquire_output_lease(job_id)
+        with pytest.raises(app.HTTPException) as exc_info:
+            app.delete_job_output(job_id, "0")
+        assert exc_info.value.status_code == 409
+        assert (out_dir / "sample.jpg").is_file()
+
+        app.jobs.release_output_lease(job_id)
+        result = app.delete_job_output(job_id, "0")
+        assert result["outputs"] == []
+        assert not (out_dir / "sample.jpg").exists()
+    finally:
+        with app.jobs._lock:
+            app.jobs._jobs.pop(job_id, None)
+            app.jobs._output_locks.pop(job_id, None)
+            app.jobs._active_output_leases.pop(job_id, None)
