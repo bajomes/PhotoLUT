@@ -452,8 +452,9 @@ def test_gpu_filter_routes_lut_through_vulkan_libplacebo(tmp_path: Path):
     assert "hwupload" in graph
     assert "libplacebo=lut=" in graph
     assert "lut_type=native" in graph
-    assert "format=yuv420p10le" in graph
-    assert "hwdownload,format=yuv420p10le" in graph
+    assert "libplacebo=lut=" in graph
+    assert ":format=" not in graph
+    assert "hwdownload,format=p010le[outv]" in graph
     assert "bt2020" in graph
     assert "arib-std-b67" in graph
 
