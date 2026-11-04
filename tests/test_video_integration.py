@@ -54,7 +54,7 @@ def _gpu_video_stack_skip_reason() -> str | None:
             missing.append("libplacebo custom .cube LUT option")
         if not re.search(r"^cuda$", hwaccels.stdout + hwaccels.stderr, re.MULTILINE):
             missing.append("CUDA hwaccel")
-        if not re.search(r"^\\s*vulkan\\s*$", device_text, re.MULTILINE | re.IGNORECASE):
+        if not re.search(r"(?:^|[,\\s])vulkan(?:$|[,\\s])", device_text, re.IGNORECASE):
             missing.append("Vulkan hardware device support")
         if missing:
             return "FFmpeg build lacks required GPU features: " + ", ".join(missing)
