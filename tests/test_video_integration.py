@@ -76,7 +76,7 @@ def _run(command: list[str]) -> None:
     subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
 
 
-def test_synthetic_hlg_video_exports_real_10bit_hlg_bt2020_mp4(tmp_path: Path):
+def test_synthetic_hlg_video_exports_hlg_and_rec709_10bit_mp4(tmp_path: Path):
     """Exercise FFmpeg, LUT parsing, HLG gating, encoding, and output metadata."""
     ffmpeg = shutil.which("ffmpeg")
     ffprobe = shutil.which("ffprobe")
