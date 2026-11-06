@@ -60,7 +60,13 @@ def _is_srgb_profile(profile_bytes: bytes) -> bool:
     try:
         source_profile = ImageCms.ImageCmsProfile(io.BytesIO(profile_bytes))
         srgb_profile = ImageCms.createProfile("sRGB")
-        levels = np.arange(0, 256, 32, dtype=np.uint8)
+        # Include near-black, midtone, near-white, and exact endpoints. A
+        # coarse grid can miss non-identity TRCs or gamut bends between samples.
+        levels = np.array(
+            [0, 8, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160,
+             176, 192, 208, 224, 240, 248, 255],
+            dtype=np.uint8,
+        )
         patches = np.array(
             [(r, g, b) for r in levels for g in levels for b in levels],
             dtype=np.uint8,
@@ -103,6 +109,17 @@ def _load_tiff(path: Path) -> tuple[np.ndarray, bytes | None]:
         samples = int(page.samplesperpixel or 1)
         if samples not in (3, 4):
             raise ValueError("TIFF must contain RGB or RGBA samples")
+        if samples == 4:
+            extrasamples_tag = page.tags.get("ExtraSamples")
+            if extrasamples_tag is None:
+                raise ValueError("RGBA TIFF must declare its alpha channel with ExtraSamples")
+            extra_values = extrasamples_tag.value
+            if isinstance(extra_values, (int, np.integer)):
+                extra_values = (int(extra_values),)
+            else:
+                extra_values = tuple(int(value) for value in extra_values)
+            if len(extra_values) != 1 or extra_values[0] not in (1, 2):
+                raise ValueError("RGBA TIFF must declare associated or unassociated alpha")
         if int(page.imagewidth) * int(page.imagelength) > MAX_PIXELS:
             raise ValueError("TIFF exceeds the 8 megapixel limit")
         orientation_tag = page.tags.get("Orientation")
