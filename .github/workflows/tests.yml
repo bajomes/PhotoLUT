@@ -75,6 +75,7 @@ jobs:
               result = export_ultrahdr(source, output)
               assert output.is_file() and output.stat().st_size > 100
               assert result["gain_map_verified"] is True
+              assert result["max_content_boost"] == 4.0
               print(result)
           '
       - name: Install Playwright browser
