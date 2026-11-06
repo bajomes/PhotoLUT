@@ -173,6 +173,13 @@ def export_ultrahdr(
     rgba[..., :3] = hdr.astype(np.float16)
     rgba[..., 3] = 1.0
     base = np.rint(_linear_to_srgb(linear) * 255.0).astype(np.uint8)
+    # Always tag the SDR JPEG base as sRGB. TIFFs without an embedded ICC
+    # profile are interpreted as sRGB, so leaving the output untagged would
+    # make color handling dependent on the viewer's fallback assumptions.
+    output_icc = (
+        icc if icc is not None
+        else ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+    )
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="photolut-ultrahdr-") as tmp:
@@ -182,7 +189,7 @@ def export_ultrahdr(
         rgba.tofile(raw_path)
         Image.fromarray(base, "RGB").save(
             base_path, format="JPEG", quality=quality, subsampling=0,
-            icc_profile=icc,
+            icc_profile=output_icc,
         )
         command = [
             executable, "-m", "0", "-p", str(raw_path), "-a", "4",
