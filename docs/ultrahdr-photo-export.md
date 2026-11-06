@@ -13,3 +13,15 @@ The feature is available through `POST /api/ultrahdr/export` and the dedicated U
 The CI workflow builds the pinned encoder, creates a high-highlight TIFF, performs a real Ultra HDR encode, verifies the gain-map metadata and configured boost ceiling, then decodes both the HDR linear half-float rendition and the SDR sRGB fallback and checks their pixel data. It also verifies the container runs unprivileged, smoke-tests the web UI/API schema, and runs the Python test suite. Run focused unit tests with `pytest tests/test_hdr_photo.py`.
 
 For upstream build details, see the official [libultrahdr v2.0.2 build instructions](https://github.com/google/libultrahdr/blob/v2.0.2/docs/building.md). The official sample executable is named `ultrahdr_app`.
+
+## Release validation checklist
+
+The automated decode checks prove that the JPEG contains a decodable SDR base and HDR rendition; they do not prove that every gallery, browser, messaging app, or display renders it correctly. Before removing the experimental label, review a representative set of photos on at least one HDR-capable device and one SDR-only viewer:
+
+1. Confirm the JPEG opens normally in an SDR viewer and that its base image has natural exposure and color.
+2. Open the same file in an Ultra HDR-aware viewer on an HDR display. Check that reconstructed highlights are visible but not excessively bright, clipped, posterized, or surrounded by halos.
+3. Compare neutral grays, saturated colors, shadow detail, and fine edges between the SDR and HDR presentations.
+4. Copy the exported file through the intended sharing/storage workflow, then probe and decode the received copy again. Some services recompress JPEGs and may discard the gain map.
+5. Record device model, OS version, viewer application/version, display mode, and the source/output pair used for review.
+
+This checklist follows the platform's distinction between SDR base compatibility and HDR gain-map rendering. Android's [Ultra HDR implementation and validation guide](https://source.android.com/docs/core/camera/ultra-hdr) describes the reference implementation and device validation coverage, including JPEG_R and HDR-display test cases. Passing PhotoLUT CI alone must not be treated as equivalent to those device-level checks.
