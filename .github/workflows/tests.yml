@@ -54,6 +54,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build Docker image
         run: docker build --tag photolut:ci .
+      - name: Build NVIDIA GPU integration test image
+        run: |
+          docker build --target gpu-test --tag photolut:gpu-test .
+          docker run --rm --entrypoint python photolut:gpu-test -m pytest --version
       - name: Verify bundled libultrahdr license
         run: |
           docker run --rm --entrypoint sh photolut:ci -c 'test -s /usr/share/doc/libultrahdr/LICENSE && grep -q "MIT License" /usr/share/doc/libultrahdr/LICENSE && grep -q "Apache License" /usr/share/doc/libultrahdr/LICENSE'
