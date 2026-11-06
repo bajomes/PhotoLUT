@@ -22,7 +22,7 @@ RUN cmake -S . -B build -G Ninja \
     && cmake --install build \
     && test -x /opt/ultrahdr/bin/ultrahdr_app
 
-FROM python:3.12-slim-trixie
+FROM python:3.12-slim-trixie AS runtime
 
 RUN echo "deb http://deb.debian.org/debian sid main" > /etc/apt/sources.list.d/sid.list \
     && apt-get update \
@@ -33,6 +33,9 @@ RUN echo "deb http://deb.debian.org/debian sid main" > /etc/apt/sources.list.d/s
         libjpeg62-turbo \
         ffmpeg/sid \
     && ffmpeg -hide_banner -filters 2>&1 | grep -q libplacebo \
+    && ffmpeg -hide_banner -filters 2>&1 | grep -q zscale \
+    && ffmpeg -hide_banner -filters 2>&1 | grep -q psnr \
+    && ffmpeg -hide_banner -encoders 2>&1 | grep -q libx265 \
     && ffmpeg -hide_banner -h filter=libplacebo 2>&1 | grep -Eq '^[[:space:]]*lut[[:space:]]+<' \
     && ffmpeg -hide_banner -encoders 2>&1 | grep -q hevc_nvenc \
     && ffmpeg -hide_banner -hwaccels 2>&1 | grep -q '^cuda$' \
@@ -61,3 +64,13 @@ USER photolut
 EXPOSE 8000
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+
+ 
+FROM runtime AS gpu-test
+USER root
+RUN pip install --no-cache-dir pytest
+COPY --chown=photolut:photolut tests/test_video_integration.py /app/tests/test_video_integration.py
+USER photolut
+CMD ["python", "-m", "pytest", "-q", "-rs", "/app/tests/test_video_integration.py"]
+
+FROM runtime AS final
