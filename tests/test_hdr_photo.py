@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import tifffile
-from PIL import ImageCms
+from PIL import Image, ImageCms
 
 import hdr_photo
 
@@ -107,6 +107,9 @@ def test_encoder_uses_srgb_gamut_and_content_boost(tmp_path: Path, monkeypatch):
     def fake_run(command, **kwargs):
         commands.append(command)
         if "-P" not in command:
+            base_path = Path(command[command.index("-i") + 1])
+            with Image.open(base_path) as base_image:
+                assert base_image.info.get("icc_profile"), "SDR JPEG base must embed an sRGB ICC profile"
             Path(command[command.index("-z") + 1]).write_bytes(b"fake jpeg")
         return Result()
 
