@@ -270,13 +270,27 @@ def test_accepts_fully_opaque_rgba_tiff(tmp_path: Path):
     np.testing.assert_allclose(rgb[..., 0], 12000 / 65535.0)
 
 
-def test_rejects_rgba_tiff_without_declared_alpha_type(tmp_path: Path):
+def test_rejects_rgba_tiff_without_declared_alpha_type(tmp_path: Path, monkeypatch):
     source = tmp_path / "rgba-without-extra-samples.tiff"
-    pixels = np.full((2, 3, 4), 65535, dtype=np.uint16)
-    tifffile.imwrite(
-        source, pixels, photometric="rgb",
-        extratags=[(277, "H", 1, 4, False)],
-    )
+    source.write_bytes(b"fixture")
+
+    class FakePage:
+        bitspersample = 16
+        photometric = 2
+        planarconfig = 1
+        sampleformat = 1
+        samplesperpixel = 4
+        imagewidth = 3
+        imagelength = 2
+        tags = {}
+
+    class FakeTiff:
+        pages = [FakePage()]
+
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+
+    monkeypatch.setattr(tifffile, "TiffFile", lambda _path: FakeTiff())
     with pytest.raises(ValueError, match="ExtraSamples"):
         hdr_photo._load_tiff(source)
 
