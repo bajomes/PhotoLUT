@@ -96,3 +96,15 @@ Automated tests cover LUT parsing, interpolation, malformed LUT rejection, uploa
 ## License
 
 PhotoLUT is distributed under the MIT License. See [LICENSE](LICENSE).
+
+
+## NVIDIA GPU integration test
+
+The normal hosted CI runner cannot execute the NVIDIA video pipeline. The Dockerfile includes a separate test image that contains the real GPU integration test without adding pytest to the production image. On a Linux or Docker Desktop host with NVIDIA Container Toolkit and a supported NVIDIA GPU, run:
+
+```bash
+docker build --target gpu-test -t photolut:gpu-test .
+docker run --rm --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all photolut:gpu-test
+```
+
+This exercises both HLG HDR and Rec.709 SDR exports through NVDEC, NVIDIA Vulkan/libplacebo, and NVENC. The test does not fall back to CPU processing; a missing or unusable NVIDIA device is reported as a failure. The image build checks the required FFmpeg filters and encoders, and the test is kept separate from the production runtime.
