@@ -98,3 +98,15 @@ def test_ultrahdr_api_releases_slot_when_job_directory_creation_fails(
     assert response.status_code == 500
     assert semaphore.acquire(blocking=False)
     semaphore.release()
+
+
+def test_ultrahdr_api_rejects_malformed_tiff(client, tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(app, "WORK_DIR", tmp_path)
+    monkeypatch.setattr(app.hdr_photo.shutil, "which", lambda _: "/usr/bin/ultrahdr_app")
+    response = client.post(
+        "/api/ultrahdr/export",
+        files={"tiff_file": ("photo.tiff", b"not a TIFF file", "image/tiff")},
+    )
+    assert response.status_code == 422
+    assert "readable TIFF" in response.json()["detail"]
+    assert not list(tmp_path.glob("photolut-ultrahdr-*"))
