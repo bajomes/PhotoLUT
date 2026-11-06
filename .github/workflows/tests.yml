@@ -68,9 +68,10 @@ jobs:
               source = root / "fixture.tiff"
               output = root / "fixture-ultrahdr.jpg"
               pixels = np.zeros((32, 48, 3), dtype=np.uint16)
-              pixels[..., 0] = np.linspace(5000, 62000, 48, dtype=np.uint16)
-              pixels[..., 1] = 28000
-              pixels[..., 2] = 42000
+              gradient = np.linspace(1000, 65535, 48, dtype=np.uint16)
+              pixels[..., 0] = gradient
+              pixels[..., 1] = gradient
+              pixels[..., 2] = gradient
               tifffile.imwrite(source, pixels, photometric="rgb")
               result = export_ultrahdr(source, output)
               assert output.is_file() and output.stat().st_size > 100
