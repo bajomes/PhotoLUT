@@ -102,7 +102,7 @@ def test_encoder_uses_srgb_gamut_and_content_boost(tmp_path: Path, monkeypatch):
     class Result:
         returncode = 0
         stderr = ""
-        stdout = "gainmap metadata present"
+        stdout = "Ultra HDR Image: Yes\\nGainMap Metadata:\\n--maxContentBoost 3.5\\n"
 
     def fake_run(command, **kwargs):
         commands.append(command)
@@ -168,3 +168,25 @@ def test_rejects_tiff_over_8_megapixels(tmp_path: Path):
             hdr_photo._load_tiff(source)
     finally:
         monkeypatch.undo()
+
+
+def test_encoder_rejects_gainmap_boost_mismatch(tmp_path: Path, monkeypatch):
+    source = tmp_path / "input.tiff"
+    _write_rgb_tiff(source, np.full((2, 2, 3), 50000, dtype=np.uint16))
+    destination = tmp_path / "out.jpg"
+    monkeypatch.setattr(hdr_photo.shutil, "which", lambda _: "/usr/bin/ultrahdr_app")
+
+    class Result:
+        returncode = 0
+        stderr = ""
+        stdout = "Ultra HDR Image: Yes\\nGainMap Metadata:\\n--maxContentBoost 2.0\\n"
+
+    def fake_run(command, **kwargs):
+        if "-P" not in command:
+            Path(command[command.index("-z") + 1]).write_bytes(b"fake jpeg")
+        return Result()
+
+    monkeypatch.setattr(hdr_photo.subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError, match="max content boost"):
+        hdr_photo.export_ultrahdr(source, destination, max_boost=3.5)
+    assert not destination.exists()
