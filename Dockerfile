@@ -41,6 +41,7 @@ RUN echo "deb http://deb.debian.org/debian sid main" > /etc/apt/sources.list.d/s
 
 COPY --from=ultrahdr-builder /opt/ultrahdr/bin/ultrahdr_app /usr/local/bin/ultrahdr_app
 COPY --from=ultrahdr-builder /opt/ultrahdr/lib/ /usr/local/lib/
+COPY --from=ultrahdr-builder /tmp/libultrahdr/LICENSE /usr/share/doc/libultrahdr/LICENSE
 RUN ldconfig
 
 RUN groupadd --system photolut && useradd --system --gid photolut --home-dir /app --no-create-home photolut
