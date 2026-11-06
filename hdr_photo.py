@@ -221,12 +221,13 @@ def export_ultrahdr(
             raise RuntimeError("Ultra HDR output failed gain-map metadata verification")
         if any(
             not np.isfinite(value)
-            or not np.isclose(value, max_boost, rtol=1e-4, atol=1e-4)
+            or value < 1.0 - 1e-4
+            or value > max_boost + 1e-4
             for value in boost_values
         ):
             destination.unlink(missing_ok=True)
             raise RuntimeError(
-                "Ultra HDR gain-map max content boost does not match the requested value"
+                "Ultra HDR gain-map max content boost exceeds the requested maximum"
             )
     return {
         "width": width,
