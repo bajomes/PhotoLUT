@@ -59,6 +59,7 @@ jobs:
           docker run --rm --entrypoint python photolut:ci -c '
           from pathlib import Path
           import tempfile
+          import subprocess
           import numpy as np
           import tifffile
           from hdr_photo import export_ultrahdr
@@ -77,6 +78,31 @@ jobs:
               assert output.is_file() and output.stat().st_size > 100
               assert result["gain_map_verified"] is True
               assert 1.5 < result["max_content_boost"] <= 4.0
+
+              hdr_raw = root / "decoded-hdr-linear-f16.raw"
+              hdr_decode = subprocess.run(
+                  ["ultrahdr_app", "-m", "1", "-j", str(output),
+                   "-o", "0", "-O", "4", "-z", str(hdr_raw)],
+                  capture_output=True, text=True, check=False,
+              )
+              assert hdr_decode.returncode == 0, hdr_decode.stderr
+              hdr = np.fromfile(hdr_raw, dtype=np.float16)
+              assert hdr.size == 32 * 48 * 4
+              hdr = hdr.reshape(32, 48, 4)
+              assert np.isfinite(hdr).all()
+              assert np.allclose(hdr[..., 3], 1.0, atol=1e-3)
+              assert float(hdr[..., :3].max()) > 1.5
+
+              sdr_raw = root / "decoded-sdr-srgb-u8.raw"
+              sdr_decode = subprocess.run(
+                  ["ultrahdr_app", "-m", "1", "-j", str(output),
+                   "-o", "3", "-O", "3", "-z", str(sdr_raw)],
+                  capture_output=True, text=True, check=False,
+              )
+              assert sdr_decode.returncode == 0, sdr_decode.stderr
+              sdr = np.fromfile(sdr_raw, dtype=np.uint8)
+              assert sdr.size == 32 * 48 * 4
+              assert sdr.reshape(32, 48, 4)[..., 3].min() == 255
               print(result)
           '
       - name: Install Playwright browser
