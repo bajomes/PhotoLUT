@@ -115,7 +115,10 @@ def test_encoder_uses_srgb_gamut_and_content_boost(tmp_path: Path, monkeypatch):
     encode = commands[0]
     assert encode[encode.index("-C") + 1] == "0"
     assert encode[encode.index("-c") + 1] == "0"
+    assert encode[encode.index("-t") + 1] == "0"
+    assert encode[encode.index("-a") + 1] == "4"
     assert encode[encode.index("-K") + 1] == "3.5"
+    assert result["max_content_boost"] == pytest.approx(3.5)
     assert result["gain_map_verified"] is True
 
 
