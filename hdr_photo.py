@@ -82,7 +82,11 @@ def _is_srgb_profile(profile_bytes: bytes) -> bool:
 def _load_tiff(path: Path) -> tuple[np.ndarray, bytes | None]:
     if path.stat().st_size > MAX_TIFF_BYTES:
         raise ValueError("TIFF exceeds the 200 MiB limit")
-    with tifffile.TiffFile(path) as tif:
+    try:
+        tif = tifffile.TiffFile(path)
+    except Exception as exc:
+        raise ValueError("Input is not a readable TIFF file") from exc
+    with tif:
         if len(tif.pages) != 1:
             raise ValueError("Only single-page TIFF files are supported")
         page = tif.pages[0]
@@ -105,7 +109,10 @@ def _load_tiff(path: Path) -> tuple[np.ndarray, bytes | None]:
         orientation = int(orientation_tag.value) if orientation_tag is not None else 1
         if orientation not in range(1, 9):
             raise ValueError("TIFF orientation tag must be between 1 and 8")
-        pixels = page.asarray()
+        try:
+            pixels = page.asarray()
+        except Exception as exc:
+            raise ValueError("TIFF pixel data could not be decoded") from exc
         icc_tag = page.tags.get("InterColorProfile")
         icc = bytes(icc_tag.value) if icc_tag is not None else None
 
