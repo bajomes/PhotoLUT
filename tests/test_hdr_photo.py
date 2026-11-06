@@ -214,3 +214,10 @@ def test_applies_tiff_orientation_before_export(tmp_path: Path):
     expected = np.rot90(pixels, k=3, axes=(0, 1)).astype(np.float32) / 65535.0
     assert rgb.shape == (3, 2, 3)
     np.testing.assert_allclose(rgb, expected)
+
+
+def test_rejects_unreadable_tiff(tmp_path: Path):
+    source = tmp_path / "invalid.tiff"
+    source.write_bytes(b"not a TIFF file")
+    with pytest.raises(ValueError, match="readable TIFF"):
+        hdr_photo._load_tiff(source)
