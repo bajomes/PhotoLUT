@@ -203,17 +203,51 @@ def test_loads_big_endian_rgb_16bit_tiff(tmp_path: Path):
     np.testing.assert_allclose(rgb[0, 0], pixels[0, 0].astype(np.float32) / 65535.0)
 
 
-def test_applies_tiff_orientation_before_export(tmp_path: Path):
-    source = tmp_path / "rotated.tiff"
-    pixels = np.arange(18, dtype=np.uint16).reshape(2, 3, 3) * 3000
+@pytest.mark.parametrize(
+    ("orientation", "expected"),
+    [
+        (1, [[0, 1, 2], [3, 4, 5]]),
+        (2, [[2, 1, 0], [5, 4, 3]]),
+        (3, [[5, 4, 3], [2, 1, 0]]),
+        (4, [[3, 4, 5], [0, 1, 2]]),
+        (5, [[0, 3], [1, 4], [2, 5]]),
+        (6, [[3, 0], [4, 1], [5, 2]]),
+        (7, [[5, 2], [4, 1], [3, 0]]),
+        (8, [[2, 5], [1, 4], [0, 3]]),
+    ],
+)
+def test_applies_all_tiff_orientations_before_export(
+    tmp_path: Path, orientation: int, expected: list[list[int]]
+):
+    source = tmp_path / f"orientation-{orientation}.tiff"
+    pixels = np.repeat(
+        np.arange(6, dtype=np.uint16).reshape(2, 3, 1) * 10000,
+        3,
+        axis=2,
+    )
     tifffile.imwrite(
         source, pixels, photometric="rgb",
-        extratags=[(274, "H", 1, 6, False)],
+        extratags=[(274, "H", 1, orientation, False)],
     )
     rgb, _ = hdr_photo._load_tiff(source)
-    expected = np.rot90(pixels, k=3, axes=(0, 1)).astype(np.float32) / 65535.0
-    assert rgb.shape == (3, 2, 3)
-    np.testing.assert_allclose(rgb, expected)
+    expected_rgb = np.repeat(
+        np.asarray(expected, dtype=np.float32)[..., None] * (10000 / 65535.0),
+        3,
+        axis=2,
+    )
+    assert rgb.shape == expected_rgb.shape
+    np.testing.assert_allclose(rgb, expected_rgb)
+
+
+def test_rejects_invalid_tiff_orientation(tmp_path: Path):
+    source = tmp_path / "invalid-orientation.tiff"
+    pixels = np.zeros((2, 3, 3), dtype=np.uint16)
+    tifffile.imwrite(
+        source, pixels, photometric="rgb",
+        extratags=[(274, "H", 1, 9, False)],
+    )
+    with pytest.raises(ValueError, match="orientation"):
+        hdr_photo._load_tiff(source)
 
 
 def test_rejects_unreadable_tiff(tmp_path: Path):
