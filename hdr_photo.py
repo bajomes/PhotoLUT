@@ -30,6 +30,26 @@ def _linear_to_srgb(values: np.ndarray) -> np.ndarray:
     return np.where(values <= 0.0031308, values * 12.92,
                     1.055 * np.power(values, 1.0 / 2.4) - 0.055)
 
+def _apply_tiff_orientation(pixels: np.ndarray, orientation: int) -> np.ndarray:
+    """Apply the TIFF/EXIF orientation tag to decoded RGB(A) pixel data."""
+    if orientation == 1:
+        return pixels
+    if orientation == 2:
+        return np.flip(pixels, axis=1)
+    if orientation == 3:
+        return np.flip(pixels, axis=(0, 1))
+    if orientation == 4:
+        return np.flip(pixels, axis=0)
+    if orientation == 5:
+        return np.swapaxes(pixels, 0, 1)
+    if orientation == 6:
+        return np.rot90(pixels, k=3, axes=(0, 1))
+    if orientation == 7:
+        return np.flip(np.swapaxes(pixels, 0, 1), axis=(0, 1))
+    if orientation == 8:
+        return np.rot90(pixels, k=1, axes=(0, 1))
+    raise ValueError("TIFF orientation tag must be between 1 and 8")
+
 
 def _is_srgb_profile(profile_bytes: bytes) -> bool:
     """Accept ICC profiles whose actual RGB-to-sRGB transform is effectively identity.
@@ -81,15 +101,20 @@ def _load_tiff(path: Path) -> tuple[np.ndarray, bytes | None]:
             raise ValueError("TIFF must contain RGB or RGBA samples")
         if int(page.imagewidth) * int(page.imagelength) > MAX_PIXELS:
             raise ValueError("TIFF exceeds the 8 megapixel limit")
+        orientation_tag = page.tags.get("Orientation")
+        orientation = int(orientation_tag.value) if orientation_tag is not None else 1
+        if orientation not in range(1, 9):
+            raise ValueError("TIFF orientation tag must be between 1 and 8")
         pixels = page.asarray()
         icc_tag = page.tags.get("InterColorProfile")
         icc = bytes(icc_tag.value) if icc_tag is not None else None
 
+    pixels = _apply_tiff_orientation(pixels, orientation)
     if pixels.ndim != 3 or pixels.shape[-1] != samples:
         raise ValueError("TIFF must use contiguous RGB or RGBA pixel data")
     if pixels.shape[0] * pixels.shape[1] > MAX_PIXELS:
         raise ValueError("TIFF exceeds the 8 megapixel limit")
-    if pixels.dtype != np.uint16:
+    if pixels.dtype.kind != "u" or pixels.dtype.itemsize != 2:
         raise ValueError("TIFF pixel data must be unsigned 16-bit")
     if samples == 4 and np.any(pixels[..., 3] != 65535):
         raise ValueError("TIFF with transparency is not supported; flatten it to RGB first")
@@ -177,15 +202,38 @@ def export_ultrahdr(
             destination.unlink(missing_ok=True)
             raise RuntimeError("Ultra HDR gain-map verification timed out") from exc
         probe_text = (probe.stdout or "") + (probe.stderr or "")
-        if probe.returncode != 0 or "gainmap" not in probe_text.lower():
+        probe_lower = probe_text.lower()
+        boost_values: list[float] = []
+        for line in probe_text.splitlines():
+            if line.strip().lower().startswith("--maxcontentboost "):
+                try:
+                    boost_values = [float(value) for value in line.split()[1:]]
+                except ValueError:
+                    boost_values = []
+                break
+        if (
+            probe.returncode != 0
+            or "ultra hdr image: yes" not in probe_lower
+            or "gainmap metadata" not in probe_lower
+            or not boost_values
+        ):
             destination.unlink(missing_ok=True)
             raise RuntimeError("Ultra HDR output failed gain-map metadata verification")
+        if any(
+            not np.isfinite(value)
+            or not np.isclose(value, max_boost, rtol=1e-4, atol=1e-4)
+            for value in boost_values
+        ):
+            destination.unlink(missing_ok=True)
+            raise RuntimeError(
+                "Ultra HDR gain-map max content boost does not match the requested value"
+            )
     return {
         "width": width,
         "height": height,
         "format": "JPEG Ultra HDR",
         "quality": quality,
-        "max_content_boost": max_boost,
+        "max_content_boost": boost_values[0],
         "gain_map_verified": True,
         "sdr_fallback": True,
     }
