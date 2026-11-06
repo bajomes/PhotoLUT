@@ -102,7 +102,7 @@ def test_encoder_uses_srgb_gamut_and_content_boost(tmp_path: Path, monkeypatch):
     class Result:
         returncode = 0
         stderr = ""
-        stdout = "Ultra HDR Image: Yes\\nGainMap Metadata:\\n--maxContentBoost 3.5\\n"
+        stdout = "Ultra HDR Image: Yes\nGainMap Metadata:\n--maxContentBoost 3.5\n"
 
     def fake_run(command, **kwargs):
         commands.append(command)
@@ -179,7 +179,7 @@ def test_encoder_rejects_gainmap_boost_mismatch(tmp_path: Path, monkeypatch):
     class Result:
         returncode = 0
         stderr = ""
-        stdout = "Ultra HDR Image: Yes\\nGainMap Metadata:\\n--maxContentBoost 2.0\\n"
+        stdout = "Ultra HDR Image: Yes\nGainMap Metadata:\n--maxContentBoost 2.0\n"
 
     def fake_run(command, **kwargs):
         if "-P" not in command:
@@ -190,3 +190,24 @@ def test_encoder_rejects_gainmap_boost_mismatch(tmp_path: Path, monkeypatch):
     with pytest.raises(RuntimeError, match="max content boost"):
         hdr_photo.export_ultrahdr(source, destination, max_boost=3.5)
     assert not destination.exists()
+
+
+def test_loads_big_endian_rgb_16bit_tiff(tmp_path: Path):
+    source = tmp_path / "big-endian.tiff"
+    pixels = np.array([[[1000, 32000, 65000]]], dtype=">u2")
+    tifffile.imwrite(source, pixels, photometric="rgb", byteorder=">")
+    rgb, _ = hdr_photo._load_tiff(source)
+    np.testing.assert_allclose(rgb[0, 0], pixels[0, 0].astype(np.float32) / 65535.0)
+
+
+def test_applies_tiff_orientation_before_export(tmp_path: Path):
+    source = tmp_path / "rotated.tiff"
+    pixels = np.arange(18, dtype=np.uint16).reshape(2, 3, 3) * 3000
+    tifffile.imwrite(
+        source, pixels, photometric="rgb",
+        extratags=[(274, "H", 1, 6, False)],
+    )
+    rgb, _ = hdr_photo._load_tiff(source)
+    expected = np.rot90(pixels, k=3, axes=(0, 1)).astype(np.float32) / 65535.0
+    assert rgb.shape == (3, 2, 3)
+    np.testing.assert_allclose(rgb, expected)
