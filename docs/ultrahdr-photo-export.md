@@ -10,6 +10,6 @@ The feature is available through `POST /api/ultrahdr/export` and the dedicated U
 
 **Important:** this is inverse-tone-mapped HDR, not recovery of HDR data that was never present in an SDR TIFF. The reconstructed highlights are an estimated rendering. The feature remains experimental until representative photos have been visually reviewed on HDR-capable physical devices. Platform recompression may also alter or remove HDR metadata.
 
-The CI workflow builds the pinned encoder, runs a real TIFF-to-Ultra-HDR encode and gain-map probe in the Docker image, verifies the container runs unprivileged, smoke-tests the web UI/API schema, and runs the Python test suite. Run focused unit tests with `pytest tests/test_hdr_photo.py`.
+The CI workflow builds the pinned encoder, creates a high-highlight TIFF, performs a real Ultra HDR encode, verifies the gain-map metadata and configured boost ceiling, then decodes both the HDR linear half-float rendition and the SDR sRGB fallback and checks their pixel data. It also verifies the container runs unprivileged, smoke-tests the web UI/API schema, and runs the Python test suite. Run focused unit tests with `pytest tests/test_hdr_photo.py`.
 
 For upstream build details, see the official [libultrahdr v2.0.2 build instructions](https://github.com/google/libultrahdr/blob/v2.0.2/docs/building.md). The official sample executable is named `ultrahdr_app`.
