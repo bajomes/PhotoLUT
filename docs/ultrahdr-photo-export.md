@@ -1,6 +1,6 @@
 # Ultra HDR photo export (experimental)
 
-PhotoLUT accepts **single-page, RGB/RGBA, unsigned 16-bit TIFF** input and creates a backward-compatible Ultra HDR JPEG through Google's `ultrahdr_app` sample executable from [google/libultrahdr](https://github.com/google/libultrahdr). The Docker image builds libultrahdr v2.0.2 from pinned commit `e5f5a022fe96fc4dc2ee35c19f733a50df807abe` with `UHDR_BUILD_EXAMPLES=ON`.
+PhotoLUT accepts **single-page, RGB/RGBA, unsigned 16-bit TIFF** input and creates a backward-compatible Ultra HDR JPEG through Google's `ultrahdr_app` sample executable from [google/libultrahdr](https://github.com/google/libultrahdr). The Docker image builds libultrahdr v2.0.2 from pinned commit `e5f5a022fe96fc4dc2ee35c19f733a50df807abe` with `UHDR_BUILD_EXAMPLES=ON`. The upstream dual MIT/Apache-2.0 license is retained in the image at `/usr/share/doc/libultrahdr/LICENSE`.
 
 The TIFF is interpreted as an SDR sRGB rendition. PhotoLUT reconstructs a highlight shoulder (default maximum content boost 4x), encodes a linear RGBA half-float HDR intent plus an SDR JPEG base, and asks libultrahdr to derive and embed the gain map. Both HDR and SDR intents are tagged with BT.709/sRGB primaries, and the configured maximum content boost is passed to the encoder as gain-map metadata. The output is probed by libultrahdr before it is accepted; the reported gain-map metadata must not exceed the requested maximum content boost or the export is rejected; the actual boost can be lower for images whose pixel values do not use the full configured range.
 
