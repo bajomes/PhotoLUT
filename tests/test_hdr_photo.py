@@ -255,3 +255,68 @@ def test_rejects_unreadable_tiff(tmp_path: Path):
     source.write_bytes(b"not a TIFF file")
     with pytest.raises(ValueError, match="readable TIFF"):
         hdr_photo._load_tiff(source)
+
+def test_accepts_fully_opaque_rgba_tiff(tmp_path: Path):
+    source = tmp_path / "opaque-rgba.tiff"
+    pixels = np.full((2, 3, 4), 65535, dtype=np.uint16)
+    pixels[..., 0] = 12000
+    tifffile.imwrite(source, pixels, photometric="rgb", extrasamples="unassalpha")
+    rgb, icc = hdr_photo._load_tiff(source)
+    assert rgb.shape == (2, 3, 3)
+    assert icc is None
+    np.testing.assert_allclose(rgb[..., 0], 12000 / 65535.0)
+
+
+def test_rejects_eight_bit_rgb_tiff(tmp_path: Path):
+    source = tmp_path / "rgb8.tiff"
+    tifffile.imwrite(source, np.zeros((2, 2, 3), dtype=np.uint8), photometric="rgb")
+    with pytest.raises(ValueError, match="16-bit"):
+        hdr_photo._load_tiff(source)
+
+
+def test_rejects_planar_separate_rgb_tiff(tmp_path: Path):
+    source = tmp_path / "planar.tiff"
+    pixels = np.zeros((3, 2, 2), dtype=np.uint16)
+    tifffile.imwrite(source, pixels, photometric="rgb", planarconfig="separate")
+    with pytest.raises(ValueError, match="Planar-separate"):
+        hdr_photo._load_tiff(source)
+
+
+@pytest.mark.parametrize(
+    "probe_result",
+    [
+        (1, "Ultra HDR Image: Yes\\nGainMap Metadata:\\n--maxContentBoost 2.0\\n"),
+        (0, "Ultra HDR Image: No\\n"),
+        (0, "Ultra HDR Image: Yes\\nGainMap Metadata missing\\n"),
+        (0, "Ultra HDR Image: Yes\\nGainMap Metadata:\\n"),
+    ],
+)
+def test_encoder_rejects_unverified_gainmap_and_removes_output(
+    tmp_path: Path, monkeypatch, probe_result
+):
+    source = tmp_path / "input.tiff"
+    _write_rgb_tiff(source, np.full((2, 2, 3), 50000, dtype=np.uint16))
+    destination = tmp_path / "out.jpg"
+    monkeypatch.setattr(hdr_photo.shutil, "which", lambda _: "/usr/bin/ultrahdr_app")
+    calls = 0
+
+    class Result:
+        def __init__(self, returncode, stdout):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = ""
+
+    def fake_run(command, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if "-P" not in command:
+            Path(command[command.index("-z") + 1]).write_bytes(b"partial jpeg")
+            return Result(0, "encoded")
+        return Result(*probe_result)
+
+    monkeypatch.setattr(hdr_photo.subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError, match="gain-map metadata verification"):
+        hdr_photo.export_ultrahdr(source, destination)
+    assert calls == 2
+    assert not destination.exists()
+
