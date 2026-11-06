@@ -270,6 +270,17 @@ def test_accepts_fully_opaque_rgba_tiff(tmp_path: Path):
     np.testing.assert_allclose(rgb[..., 0], 12000 / 65535.0)
 
 
+def test_rejects_rgba_tiff_without_declared_alpha_type(tmp_path: Path):
+    source = tmp_path / "rgba-without-extra-samples.tiff"
+    pixels = np.full((2, 3, 4), 65535, dtype=np.uint16)
+    tifffile.imwrite(
+        source, pixels, photometric="rgb",
+        extratags=[(277, "H", 1, 4, False)],
+    )
+    with pytest.raises(ValueError, match="ExtraSamples"):
+        hdr_photo._load_tiff(source)
+
+
 def test_rejects_eight_bit_rgb_tiff(tmp_path: Path):
     source = tmp_path / "rgb8.tiff"
     tifffile.imwrite(source, np.zeros((2, 2, 3), dtype=np.uint8), photometric="rgb")
