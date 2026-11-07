@@ -65,7 +65,8 @@ def main() -> None:
         page.route("**/api/video/process", route_processing)
         page.goto("http://127.0.0.1:8000/", wait_until="networkidle")
         page.locator('[data-studio-mode="video"]').click()
-        expect(page.locator("#videoInspectInput")).to_be_visible()
+        expect(page.locator("#videoInspectDrop")).to_be_visible()
+        expect(page.locator("#videoInspectInput")).to_be_hidden()
 
         page.locator("#videoInspectInput").set_input_files({
             "name": "sample.mp4",
