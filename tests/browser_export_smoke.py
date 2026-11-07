@@ -200,6 +200,10 @@ def main() -> None:
         expect(options.nth(2)).to_be_focused()
         page.keyboard.press("Tab")
         expect(page.locator("#closeDownloadPicker")).to_be_focused()
+        page.keyboard.press("Tab")
+        expect(options.nth(0)).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(page.locator("#closeDownloadPicker")).to_be_focused()
 
         page.keyboard.press("Shift+Tab")
         expect(options.nth(2)).to_be_focused()
