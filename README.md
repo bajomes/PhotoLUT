@@ -13,7 +13,7 @@ git pull --ff-only
 docker compose up --build -d
 ```
 
-Open http://127.0.0.1:8000 in a browser. The default Compose configuration does not require an NVIDIA GPU, because RAW photo processing runs on the CPU. Job uploads and results stay in the container's temporary `/tmp/photolut-jobs` directory and are cleaned automatically after 30 minutes; Compose no longer creates a persistent `./jobs` mount on the host.
+Open http://127.0.0.1:8000 in a browser. The default Compose configuration does not require an NVIDIA GPU, because RAW photo processing runs on the CPU. Job uploads and results stay inside the container at `/var/lib/photolut/jobs` and are cleaned automatically after 30 minutes; Compose does not mount that directory onto the host.
 
 To enable the separate HLG video workflow, install a compatible NVIDIA driver and NVIDIA Container Toolkit, then start with the optional GPU overlay:
 
