@@ -265,9 +265,9 @@ def test_busy_processor_rejects_before_uploading_files(endpoint, monkeypatch):
     async def exercise():
         with pytest.raises(app.HTTPException) as exc_info:
             if endpoint == "preview":
-                await app.preview(raw, cube)
+                await app.preview(raw, cube, "srgb")
             else:
-                await app.process([raw], cube)
+                await app.process([raw], cube, "srgb", 1.0)
         assert exc_info.value.status_code == 429
 
     asyncio.run(exercise())
