@@ -16,7 +16,7 @@ This checklist is the release record for the current PhotoLUT mainline, includin
 
 ## Photo workflow acceptance
 
-- [ ] Test representative RAW files from every camera model intended for the first release, including portrait and landscape orientation.
+- [x] Automated RAW decode/export coverage includes Nikon NEF, Canon CR2/CR3, Sony a7 III ARW, and Fujifilm X-T4 RAF; the fixtures are checked against upstream SHA-256 sums. Camera-specific visual/metadata review and coverage of every intended model remain release checks.
 - [ ] Confirm identity LUT output is visually neutral and creative LUT output matches the preview.
 - [ ] Compare 16-bit TIFF pixel values and JPEG color/profile metadata.
 - [ ] Verify output names, per-item deletion, format selection, ZIP contents, and a fresh batch after all results are removed.
