@@ -67,7 +67,7 @@ Status vocabulary is strict: **LULUS** means executed and passed; **GAGAL** mean
 | BUILD-01 | Clean Docker build and app startup as non-root | Docker image builds; container serves UI and OpenAPI; no root runtime | `.github/workflows/tests.yml`; latest fix commit CI pending |
 | RAW-01 | Pinned Nikon NEF ×2 and Canon 5D Mark IV CR2 fixtures with ExifTool | RAW decode finite sRGB; identity/creative LUT; TIFF/JPEG, ICC, orientation and camera metadata verified | `tests/test_raw_integration.py`; latest pre-fix commit test job passed |
 | PERF-01 | 2400×3200 float32 RGB synthetic image, 17³ LUT, 256-pixel tiles | Peak RSS < 6× source image byte size in fresh Linux subprocess | `tests/test_memory_footprint.py`; latest pre-fix commit test job passed |
-| PERF-02 | 24 MP RAW, reference CPU 8 physical cores / 32 GB RAM / NVMe SSD, single job | Target: ≤120 s per image; process peak RSS ≤4 GiB. Measure wall time and process peak RSS from fresh process, 3 runs, report median and max. Not yet measured on reference hardware | Benchmark not yet implemented/executed; **TERHAMBAT** by absence of reference host |
+| PERF-02 | 24 MP RAW, reference CPU 8 physical cores / 32 GB RAM / NVMe SSD, single job | Target: ≤120 s per image; process peak RSS ≤4 GiB. Run `python scripts/benchmark_photo.py sample.NEF look.cube` in a fresh process 3 times; report median and max for total time and peak RSS | Benchmark script implemented; **TERHAMBAT** by absence of reference host |
 | VID-01 | Synthetic HLG BT.2020 10-bit source, NVIDIA NVDEC + Vulkan/libplacebo + NVENC | HLG output Main 10/BT.2020/HLG; Rec.709 output Main 10/BT.709; identity-LUT PSNR >30 dB | `tests/test_video_integration.py`; **TERHAMBAT** without supported NVIDIA hardware/driver/container runtime |
 | DOC-01 | Clean checkout setup, feature limits, release notes, license and known limitations | Instructions reproduce the local Docker workflow; MIT license and hardware-dependent limitations are explicit | `README.md`, `CHANGELOG.md`, `LICENSE`; final doc review **BELUM DIJALANKAN** |
 
@@ -80,7 +80,7 @@ Status vocabulary is strict: **LULUS** means executed and passed; **GAGAL** mean
 - JPEG: lossy; validate RGB mode, ICC, dimensions and metadata, not exact pixel equality.
 - Synthetic video identity-LUT round trip: PSNR **>30 dB** plus exact output codec/bit-depth/color metadata checks.
 - Memory regression: peak RSS **<6×** the 2400×3200 float32 RGB input size on Linux.
-- Reference performance target: **≤120 s / 24 MP RAW** and **≤4 GiB peak RSS**, single worker, on the hardware definition in PERF-02. This target is predeclared, not yet measured or passed.
+- Reference performance target: **≤120 s / 24 MP RAW** and **≤4 GiB peak RSS**, single worker, on the hardware definition in PERF-02. The executable measurement is `scripts/benchmark_photo.py`; the target is predeclared, not yet measured or passed.
 
 ## 5. Environment, dependencies and reproducibility
 
