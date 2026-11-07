@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from urllib.parse import urlparse
 
@@ -10,6 +11,17 @@ PIXEL = (
     "data:image/gif;base64,"
     "R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="
 )
+
+def _solid_pixel(color: str) -> str:
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1">'
+        f'<rect width="1" height="1" fill="{color}"/></svg>'
+    )
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
+
+
+PREVIEW_BLACK = _solid_pixel("#000000")
+PREVIEW_WHITE = _solid_pixel("#ffffff")
 
 
 def _output(output_id: str, filename: str) -> dict:
@@ -41,7 +53,7 @@ def main() -> None:
                 route.fulfill(
                     status=200,
                     content_type="application/json",
-                    body=json.dumps({"before": PIXEL, "graded": PIXEL}),
+                    body=json.dumps({"before": PREVIEW_BLACK, "graded": PREVIEW_WHITE}),
                 )
             elif parsed.path == "/api/process":
                 route.fulfill(
@@ -106,6 +118,26 @@ def main() -> None:
 
         process_button = page.locator("#processBtn")
         expect(process_button).to_be_enabled(timeout=10_000)
+        expect(page.locator("#previewWrap")).to_be_visible()
+        page.wait_for_function("""
+            const canvas = document.querySelector("#previewAfter");
+            return canvas && canvas.width === 1 && canvas.height === 1;
+        """)
+        set_intensity = lambda value: page.locator("#intensity").evaluate(
+            "(el, value) => { el.value = String(value); el.dispatchEvent(new Event('input', {bubbles:true})); }",
+            value,
+        )
+        preview_pixel = lambda: page.locator("#previewAfter").evaluate(
+            "canvas => Array.from(canvas.getContext('2d').getImageData(0, 0, 1, 1).data)"
+        )
+        set_intensity(0)
+        assert preview_pixel() == [0, 0, 0, 255]
+        set_intensity(50)
+        assert preview_pixel() == [188, 188, 188, 255], (
+            "50% black/white preview blend must be linear-light sRGB, not gamma-space opacity"
+        )
+        set_intensity(100)
+        assert preview_pixel() == [255, 255, 255, 255]
         process_button.click()
         expect(page.locator(".result-card")).to_have_count(2, timeout=10_000)
 
