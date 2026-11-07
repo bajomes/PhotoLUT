@@ -4,14 +4,14 @@ This checklist is the release record for the current PhotoLUT mainline, includin
 
 ## Automated gates
 
-- [ ] Full Python suite passes with the pinned real RAW fixtures present; record the exact commit and test summary.
-- [ ] Docker production image builds from a clean checkout.
-- [ ] Container starts as the unprivileged `photolut` user and serves the UI and OpenAPI schema.
-- [ ] Browser smoke covers photo preview, batch export, result deletion, remaining-result state, JPEG/TIFF/ZIP selection, and the empty state.
-- [ ] `tests/browser_video_smoke.py` covers HLG source inspection, both HLG and Rec.709 profile requests, before/after preview controls, processing-device status, and output download naming.
-- [ ] Ultra HDR integration creates a JPEG_R-compatible output from a known 16-bit TIFF; decode and verify both SDR base and HDR rendition, gain-map metadata, ICC profile, and configured maximum content boost.
+- [x] Full Python suite passes with pinned real RAW fixtures on PR head `12615d6a63bfd89915fda575aab967e134251a0d`: **170 passed, 1 skipped** in 71.09 s. The one skip is the real NVIDIA GPU integration test because the hosted runner lacks FFmpeg's custom `.cube` libplacebo option; this is not a GPU pass.
+- [x] Docker production image builds from a clean checkout on PR head `12615d6a63bfd89915fda575aab967e134251a0d` (Actions run [#648](https://github.com/bajomes/PhotoLUT/actions/runs/42375813854)).
+- [x] Container starts as the unprivileged `photolut` user and serves the UI and OpenAPI schema (Actions run [#648](https://github.com/bajomes/PhotoLUT/actions/runs/42375813854)).
+- [x] Browser photo/export smoke checks pass in Actions run [#648](https://github.com/bajomes/PhotoLUT/actions/runs/42375813854), including the export and result-management flows.
+- [x] `tests/browser_video_smoke.py` passes in Actions run [#648](https://github.com/bajomes/PhotoLUT/actions/runs/42375813854), covering HLG inspection, HLG/Rec.709 profile requests, preview controls, device status, and output naming.
+- [x] Docker CI creates a real Ultra HDR output from a 16-bit TIFF, probes gain-map metadata, decodes both SDR and HDR renditions, and checks the configured boost ceiling (Actions run [#648](https://github.com/bajomes/PhotoLUT/actions/runs/42375813854)).
 - [ ] Upload limits, malformed inputs, unsupported color profiles, timeout handling, cancellation, temporary-file cleanup, and concurrent processing limits are covered.
-- [ ] Review dependency and container build changes; preserve third-party licenses and pinned source revisions.
+- [x] The pinned libultrahdr source revision and bundled dual MIT/Apache-2.0 license are verified in Docker CI run [#648](https://github.com/bajomes/PhotoLUT/actions/runs/42375813854). Complete the remaining dependency/security review before release.
 
 ## Photo workflow acceptance
 
@@ -23,12 +23,13 @@ This checklist is the release record for the current PhotoLUT mainline, includin
 
 ## Video workflow acceptance
 
-Run on the target NVIDIA machine with a compatible NVIDIA driver, NVIDIA Container Toolkit, Vulkan, NVDEC, NVENC, and an FFmpeg build exposing libplacebo custom `.cube` LUT support.
+Run on the target NVIDIA machine with a compatible NVIDIA driver, NVIDIA Container Toolkit, Vulkan, NVDEC, NVENC, and an FFmpeg build exposing libplacebo custom `.cube` LUT support. From the repository root, run `bash scripts/validate_nvidia_gpu.sh`; it builds the dedicated GPU test image, records GPU/driver/Docker details and the full test log under `artifacts/gpu-validation/`, and fails rather than silently skipping when the required runtime is unavailable. Preserve the generated log with the release evidence.
 
 - [ ] Inspect representative HLG/BT.2020 10-bit source clips, including 4K30 and higher frame rates.
 - [ ] Export HLG/BT.2020 using an HLG-authored LUT; verify HEVC Main 10 and output color tags.
 - [ ] Export SDR/Rec.709 using a Rec.709-authored LUT; verify tone mapping occurs before LUT application and output is tagged SDR/BT.709.
 - [ ] Confirm the application fails clearly when the required GPU pipeline is unavailable; no CPU fallback is allowed.
+- [ ] Run `bash scripts/validate_nvidia_gpu.sh` on the target RTX 3050 host and attach its log to the release record.
 - [ ] Play both exports on the intended editing and playback devices and inspect gradients, saturated colors, highlights, and shadow detail.
 
 ## Ultra HDR photo acceptance
@@ -36,7 +37,7 @@ Run on the target NVIDIA machine with a compatible NVIDIA driver, NVIDIA Contain
 The Ultra HDR path accepts only single-page, contiguous, unsigned 16-bit RGB or fully opaque RGBA TIFF within the documented 200 MiB / 8 MP limits. It treats the TIFF as SDR sRGB. Its HDR highlights are reconstructed estimates, not recovered capture data.
 
 - [ ] Open the output in an SDR-only viewer and confirm the backward-compatible base image is correct.
-- [ ] Open the output in an Ultra HDR-aware viewer on an HDR-capable display; inspect highlight intensity, clipping, banding, halos, neutral grays, saturated colors, shadows, and edges.
+- [ ] Open the output in an Ultra HDR-aware viewer on an HDR-capable display; inspect highlight intensity, clipping, banding, halos, neutral grays, saturated colors, shadows, and edges. Record the display model, certified VESA tier (if any), OS HDR mode, measured/claimed peak luminance, and viewer version; use VESA DisplayHDR Test or equivalent instrumented measurement where supported.
 - [ ] Record device model, OS version, viewer/version, display mode, source TIFF, and exported JPEG.
 - [ ] Copy/share the JPEG through the intended delivery service; verify whether the gain map survives recompression and download.
 - [ ] Keep the feature marked experimental until this device-level review is recorded.
@@ -64,3 +65,13 @@ A green hosted CI run proves only the checks executed by that workflow. It does 
 - [FFmpeg libplacebo filter documentation](https://ffmpeg.org/ffmpeg-filters.html#libplacebo): GPU color conversion, tone mapping, and LUT processing reference.
 
 Respect each upstream project's license. Do not copy GPL-licensed source into this MIT-licensed repository without an explicit license decision.
+
+
+## Latest hosted CI evidence
+
+- PR: [#62](https://github.com/bajomes/PhotoLUT/pull/62)
+- Verified head: `12615d6a63bfd89915fda575aab967e134251a0d`
+- Workflow: [Actions run #648](https://github.com/bajomes/PhotoLUT/actions/runs/42375813854) — both `test` and `docker-smoke` jobs succeeded.
+- Python result: 170 passed, 1 skipped in 71.09 seconds. The skip is the hardware integration test because the hosted runner does not expose the required custom LUT option; it is explicitly not counted as GPU validation.
+- Docker result: production and GPU-test images built; libultrahdr license check, real Ultra HDR encode/decode, unprivileged runtime, UI/API smoke, and browser photo/video checks passed.
+- This hosted result does not prove RTX 3050 execution, physical display rendering, or compatibility with every camera model.
