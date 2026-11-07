@@ -18,6 +18,9 @@ RAW_FIXTURES = (
     "iss030e122639.NEF",
     "iss042e297200.NEF",
     "Canon-5D-Mark-IV.CR2",
+    "Sony-a7III.ARW",
+    "Canon-EOS-R.CR3",
+    "Fujifilm-X-T4.RAF",
 )
 
 
