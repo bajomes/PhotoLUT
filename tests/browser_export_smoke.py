@@ -120,8 +120,10 @@ def main() -> None:
         expect(process_button).to_be_enabled(timeout=10_000)
         expect(page.locator("#previewWrap")).to_be_visible()
         page.wait_for_function("""
-            const canvas = document.querySelector("#previewAfter");
-            return canvas && canvas.width === 1 && canvas.height === 1;
+            () => {
+                const canvas = document.querySelector("#previewAfter");
+                return canvas && canvas.width === 1 && canvas.height === 1;
+            }
         """)
         set_intensity = lambda value: page.locator("#intensity").evaluate(
             "(el, value) => { el.value = String(value); el.dispatchEvent(new Event('input', {bubbles:true})); }",
