@@ -13,8 +13,12 @@ from __future__ import annotations
 import argparse
 import json
 import platform
-import resource
 import sys
+
+try:
+    import resource
+except ImportError:  # pragma: no cover - only available on Unix
+    resource = None
 import tempfile
 import time
 from pathlib import Path
@@ -35,7 +39,7 @@ def main() -> int:
     parser.add_argument("--intensity", type=float, default=1.0, help="LUT intensity from 0 to 1")
     args = parser.parse_args()
 
-    if sys.platform != "linux":
+    if sys.platform != "linux" or resource is None:
         parser.error("Peak-RSS measurement is defined for Linux only.")
     if not args.raw.is_file():
         parser.error(f"RAW file does not exist: {args.raw}")
