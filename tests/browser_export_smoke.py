@@ -118,6 +118,15 @@ def main() -> None:
         page.locator("#dlZip").click()
         expect(page.locator("#downloadPicker")).to_be_visible()
         expect(page.locator("#downloadOptions button").first).to_be_focused()
+
+        # Tab navigation must remain inside the modal dialog.
+        page.keyboard.press("Shift+Tab")
+        expect(page.locator("#closeDownloadPicker")).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(page.locator("#downloadOptions button").last).to_be_focused()
+        page.keyboard.press("Tab")
+        expect(page.locator("#closeDownloadPicker")).to_be_focused()
+
         page.keyboard.press("Escape")
         expect(page.locator("#downloadPicker")).to_be_hidden()
         expect(page.locator("#dlZip")).to_be_focused()
