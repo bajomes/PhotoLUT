@@ -28,7 +28,7 @@
 /* Keep the comparison slider independent from LUT intensity. */
 .preview-canvas{--pos:50%;touch-action:none;user-select:none;cursor:ew-resize}
 .preview-canvas .preview-before{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
-.preview-canvas .preview-after{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;clip-path:inset(0 0 0 var(--pos));opacity:var(--intensity,1);transition:opacity .05s linear}
+.preview-canvas .preview-after{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;clip-path:inset(0 0 0 var(--pos))}
 .preview-divider{position:absolute;top:0;bottom:0;left:var(--pos);width:2px;background:#fff;transform:translateX(-1px);cursor:ew-resize}
 .preview-divider:after{content:"↔";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;background:#fff;color:#171813;display:grid;place-items:center;font-size:13px;line-height:28px;text-align:center;box-shadow:0 1px 5px #0008}
 .stage-head{padding:14px 18px}.stage-head h2{font-size:12px;font-weight:600}.stage{background:#11120f}.preview-wrap{gap:8px}.preview-caption{font-size:11px}.empty-stage{color:var(--muted)}
@@ -142,7 +142,8 @@ button,input,select,textarea{letter-spacing:inherit}
         <div class="preview-wrap" id="previewWrap" hidden>
           <div class="preview-canvas" id="previewCompare" aria-label="Drag to compare original and processed image">
             <img id="previewBefore" class="preview-before" alt="Original RAW photo">
-            <img id="previewAfter" class="preview-after" alt="Photo with LUT applied">
+            <canvas id="previewAfter" class="preview-after" role="img" aria-label="Photo with LUT applied at selected intensity"></canvas>
+            <img id="previewAfterSource" alt="" aria-hidden="true" hidden>
             <div class="preview-divider" aria-hidden="true"></div>
           </div>
           <div class="preview-caption"><span id="previewFilename"></span></div>
@@ -291,7 +292,89 @@ function renderFileGrid(){
 }
 wireDrop($("dropRaw"),$("rawInput"),setRaw);wireDrop($("dropCube"),$("cubeInput"),setCube);
 $("intensity").addEventListener("input",syncIntensity);
-function syncIntensity(){$("intensityVal").textContent=$("intensity").value+"%";$("previewAfter").style.opacity=previewProcessed?"1":String(Number($("intensity").value)/100)}
+const previewBefore=$("previewBefore");
+const previewAfterSource=$("previewAfterSource");
+const previewAfterCanvas=$("previewAfter");
+let previewBeforePixels=null,previewGradedPixels=null,previewPixelWidth=0,previewPixelHeight=0;
+const SRGB_TO_LINEAR=new Float32Array(256);
+for(let i=0;i<256;i++){
+  const value=i/255;
+  SRGB_TO_LINEAR[i]=value<=0.04045?value/12.92:Math.pow((value+0.055)/1.055,2.4);
+}
+const LINEAR_TO_SRGB=new Uint8Array(4097);
+for(let i=0;i<LINEAR_TO_SRGB.length;i++){
+  const value=i/(LINEAR_TO_SRGB.length-1);
+  const encoded=value<=0.0031308?value*12.92:1.055*Math.pow(value,1/2.4)-0.055;
+  LINEAR_TO_SRGB[i]=Math.round(Math.max(0,Math.min(1,encoded))*255);
+}
+function clearPreviewPixels(){
+  previewBeforePixels=null;previewGradedPixels=null;previewPixelWidth=0;previewPixelHeight=0;
+  previewAfterCanvas.width=0;previewAfterCanvas.height=0;
+}
+function readPreviewPixels(image,width,height){
+  const source=document.createElement("canvas");
+  source.width=width;source.height=height;
+  const context=source.getContext("2d",{willReadFrequently:true});
+  context.drawImage(image,0,0,width,height);
+  return context.getImageData(0,0,width,height).data;
+}
+function refreshPreviewPixels(){
+  if(!previewBefore.complete||!previewAfterSource.complete||
+     !previewBefore.naturalWidth||!previewBefore.naturalHeight||
+     !previewAfterSource.naturalWidth||!previewAfterSource.naturalHeight)return;
+  const width=previewBefore.naturalWidth,height=previewBefore.naturalHeight;
+  try{
+    previewBeforePixels=readPreviewPixels(previewBefore,width,height);
+    previewGradedPixels=readPreviewPixels(previewAfterSource,width,height);
+    previewPixelWidth=width;previewPixelHeight=height;
+    previewAfterCanvas.width=width;previewAfterCanvas.height=height;
+    renderPreviewIntensity();
+  }catch(error){
+    clearPreviewPixels();
+    showError("Could not prepare the color-managed preview: "+(error.message||String(error)));
+  }
+}
+function setPreviewImages(before,graded){
+  clearPreviewPixels();
+  previewBefore.src=before;
+  previewAfterSource.src=graded;
+  if(previewBefore.complete&&previewAfterSource.complete)refreshPreviewPixels();
+}
+function clearPreviewImages(){
+  clearPreviewPixels();
+  previewBefore.removeAttribute("src");
+  previewAfterSource.removeAttribute("src");
+}
+function renderPreviewIntensity(){
+  if(!previewBeforePixels||!previewGradedPixels)return;
+  const context=previewAfterCanvas.getContext("2d");
+  const output=context.createImageData(previewPixelWidth,previewPixelHeight);
+  const before=previewBeforePixels,graded=previewGradedPixels,pixels=output.data;
+  const intensity=previewProcessed?1:Number($("intensity").value)/100;
+  if(intensity<=0){
+    pixels.set(before);
+  }else if(intensity>=1){
+    pixels.set(graded);
+  }else{
+    const inverse=1-intensity;
+    for(let i=0;i<pixels.length;i+=4){
+      for(let channel=0;channel<3;channel++){
+        const linear=SRGB_TO_LINEAR[before[i+channel]]*inverse+
+          SRGB_TO_LINEAR[graded[i+channel]]*intensity;
+        const index=Math.max(0,Math.min(4096,Math.round(linear*4096)));
+        pixels[i+channel]=LINEAR_TO_SRGB[index];
+      }
+      pixels[i+3]=255;
+    }
+  }
+  context.putImageData(output,0,0);
+}
+previewBefore.addEventListener("load",refreshPreviewPixels);
+previewAfterSource.addEventListener("load",refreshPreviewPixels);
+function syncIntensity(){
+  $("intensityVal").textContent=$("intensity").value+"%";
+  renderPreviewIntensity();
+}
 async function requestPreview(){
   const requestId=++previewRevision;
   if(!rawFiles.length||!cubeFile){
@@ -306,7 +389,7 @@ async function requestPreview(){
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.detail||"Preview could not be generated");
     if(requestId!==previewRevision)return;
-    $("previewBefore").src=data.before;$("previewAfter").src=data.graded;$("previewFilename").textContent=rawFiles[0].name;
+    setPreviewImages(data.before,data.graded);$("previewFilename").textContent=rawFiles[0].name;
     previewProcessed=false;$("previewWrap").hidden=false;$("emptyStage").hidden=true;$("previewCompare").style.setProperty("--pos","50%");syncIntensity();
   }catch(error){
     if(requestId!==previewRevision)return;
@@ -346,7 +429,7 @@ function renderResults(outputs,jobId){
   processing=false;$("intensity").disabled=true;$("resetBtn").disabled=false;
   $("rawInput").disabled=true;$("cubeInput").disabled=true;$("dropRaw").setAttribute("aria-disabled","true");$("dropCube").setAttribute("aria-disabled","true");$("dropRaw").tabIndex=-1;$("dropCube").tabIndex=-1;$("processBtn").style.display="none";
   $("inputArea").classList.add("results-mode");$("result").style.display="block";$("dlZip").dataset.jobId=jobId;$("fileList").style.display="none";closeDownloadPicker(false);$("summary").textContent=outputs.length+" photos processed."; 
-  if(outputs.length){const first=outputs[0];previewProcessed=true;$("previewBefore").src=first.preview_before;$("previewAfter").src=first.preview_after;$("previewFilename").textContent=first.filename;$("previewCompare").style.setProperty("--pos","50%");$("previewWrap").hidden=false;$("emptyStage").hidden=true;syncIntensity();}
+  if(outputs.length){const first=outputs[0];previewProcessed=true;setPreviewImages(first.preview_before,first.preview_after);$("previewFilename").textContent=first.filename;$("previewCompare").style.setProperty("--pos","50%");$("previewWrap").hidden=false;$("emptyStage").hidden=true;syncIntensity();}
   const gallery=$("gallery");gallery.replaceChildren();
   outputs.forEach(out=>{
     const card=document.createElement("article");card.className="result-card";
@@ -376,13 +459,13 @@ function renderResults(outputs,jobId){
         $("dlZip").hidden=remaining.length===0;
         if(remaining.length){
           const first=remaining[0];previewProcessed=true;
-          $("previewBefore").src=first.preview_before;$("previewAfter").src=first.preview_after;
+          setPreviewImages(first.preview_before,first.preview_after);
           $("previewFilename").textContent=first.filename;$("previewCompare").style.setProperty("--pos","50%");
           $("previewWrap").hidden=false;$("emptyStage").hidden=true;syncIntensity();
         }else{
           $("previewWrap").hidden=true;$("emptyStage").hidden=false;
           $("stageMessage").textContent="All export items have been removed.";
-          $("previewBefore").removeAttribute("src");$("previewAfter").removeAttribute("src");
+          clearPreviewImages();
           $("previewFilename").textContent="";
         }
       }catch(error){gallery.querySelectorAll(".remove-result").forEach(button=>button.disabled=false);remove.textContent="Remove";showError(error.message||String(error));}
@@ -423,7 +506,7 @@ document.addEventListener("keydown",e=>{
 });
 $("newBatchBtn").addEventListener("click",()=>$("resetBtn").click());
 $("resetBtn").addEventListener("click",()=>{
-  closeDownloadPicker(false);$("dlZip").hidden=false;$("dlZip").removeAttribute("data-job-id");$("inputArea").classList.remove("results-mode");$("inputArea").style.display="grid";previewRevision++;previewLoading=false;processing=false;previewProcessed=false;rawFiles=[];cubeFile=null;$("intensity").disabled=false;$("resetBtn").disabled=false;$("rawInput").disabled=false;$("cubeInput").disabled=false;$("dropRaw").removeAttribute("aria-disabled");$("dropCube").removeAttribute("aria-disabled");$("dropRaw").tabIndex=0;$("dropCube").tabIndex=0;$("processBtn").style.display="block";$("rawName").textContent="CR2, NEF, ARW, DNG and more";$("cubeName").textContent="One .cube file for the batch";$("dropRaw").classList.remove("filled");$("dropCube").classList.remove("filled");$("rawInput").value="";$("cubeInput").value="";$("colorspace").value="srgb";$("intensity").value=100;$("intensityVal").textContent="100%";$("processBtn").disabled=true;$("result").style.display="none";$("inputArea").style.display="grid";$("progressWrap").style.display="none";$("error").replaceChildren();$("fileList").style.display="none";$("previewWrap").hidden=true;$("emptyStage").hidden=false;$("stageMessage").textContent="Add RAW photos and a LUT";$("previewBefore").removeAttribute("src");$("previewAfter").removeAttribute("src");$("previewFilename").textContent="";$("previewCompare").style.setProperty("--pos","50%");$("resetBtn").style.display="none";syncIntensity();updateState();
+  closeDownloadPicker(false);$("dlZip").hidden=false;$("dlZip").removeAttribute("data-job-id");$("inputArea").classList.remove("results-mode");$("inputArea").style.display="grid";previewRevision++;previewLoading=false;processing=false;previewProcessed=false;rawFiles=[];cubeFile=null;$("intensity").disabled=false;$("resetBtn").disabled=false;$("rawInput").disabled=false;$("cubeInput").disabled=false;$("dropRaw").removeAttribute("aria-disabled");$("dropCube").removeAttribute("aria-disabled");$("dropRaw").tabIndex=0;$("dropCube").tabIndex=0;$("processBtn").style.display="block";$("rawName").textContent="CR2, NEF, ARW, DNG and more";$("cubeName").textContent="One .cube file for the batch";$("dropRaw").classList.remove("filled");$("dropCube").classList.remove("filled");$("rawInput").value="";$("cubeInput").value="";$("colorspace").value="srgb";$("intensity").value=100;$("intensityVal").textContent="100%";$("processBtn").disabled=true;$("result").style.display="none";$("inputArea").style.display="grid";$("progressWrap").style.display="none";$("error").replaceChildren();$("fileList").style.display="none";$("previewWrap").hidden=true;$("emptyStage").hidden=false;$("stageMessage").textContent="Add RAW photos and a LUT";clearPreviewImages();$("previewFilename").textContent="";$("previewCompare").style.setProperty("--pos","50%");$("resetBtn").style.display="none";syncIntensity();updateState();
 });
 wireCompare($("previewCompare"));
 updateState();
