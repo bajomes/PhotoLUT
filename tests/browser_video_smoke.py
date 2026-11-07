@@ -61,10 +61,11 @@ def main() -> None:
                 headers={"X-PhotoLUT-Processing-Device": "NVIDIA GPU"},
             )
 
-        page.locator('[data-studio-mode="video"]').click()
         page.route("**/api/video/inspect", route_inspection)
         page.route("**/api/video/process", route_processing)
         page.goto("http://127.0.0.1:8000/", wait_until="networkidle")
+        page.locator('[data-studio-mode="video"]').click()
+        expect(page.locator("#videoInspectInput")).to_be_visible()
 
         page.locator("#videoInspectInput").set_input_files({
             "name": "sample.mp4",
