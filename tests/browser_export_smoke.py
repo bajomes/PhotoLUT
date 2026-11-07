@@ -168,6 +168,17 @@ def main() -> None:
         expect(page.locator("#downloadPicker")).to_be_hidden()
         expect(page.locator("#dlZip")).to_be_focused()
 
+        # Both explicit close controls must also restore focus to the trigger.
+        page.locator("#dlZip").click()
+        page.locator("#closeDownloadPicker").click()
+        expect(page.locator("#downloadPicker")).to_be_hidden()
+        expect(page.locator("#dlZip")).to_be_focused()
+
+        page.locator("#dlZip").click()
+        page.locator("#downloadBackdrop").click(position={"x": 5, "y": 5})
+        expect(page.locator("#downloadPicker")).to_be_hidden()
+        expect(page.locator("#dlZip")).to_be_focused()
+
         for archive_format in ("jpeg", "tiff", "all"):
             page.locator("#dlZip").click()
             expect(page.locator("#downloadPicker")).to_be_visible()
