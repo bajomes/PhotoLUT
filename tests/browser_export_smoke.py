@@ -129,8 +129,8 @@ def main() -> None:
         expect(page.locator("#closeDownloadPicker")).to_be_focused()
         page.locator("#downloadOptions button").first.focus()
 
-        # Hidden, inert, aria-hidden, and negative-tabindex descendants must
-        # never enter the modal's keyboard focus sequence.
+        # Hidden, inert, aria-hidden, disabled-fieldset, and negative-tabindex
+        # descendants must never enter the modal's keyboard focus sequence.
         page.evaluate("""
             const dialog = document.querySelector(".download-dialog");
             for (const attributes of [
@@ -147,6 +147,14 @@ def main() -> None:
                 }
                 dialog.appendChild(button);
             }
+            const disabledFieldset = document.createElement("fieldset");
+            disabledFieldset.disabled = true;
+            disabledFieldset.style.cssText = "position:absolute;left:-10000px";
+            const inheritedDisabledButton = document.createElement("button");
+            inheritedDisabledButton.textContent = "disabled by fieldset";
+            disabledFieldset.appendChild(inheritedDisabledButton);
+            dialog.appendChild(disabledFieldset);
+
         """)
 
         # Forward navigation follows the visual order and wraps to the close
