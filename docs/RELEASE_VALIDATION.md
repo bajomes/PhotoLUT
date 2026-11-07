@@ -11,7 +11,8 @@ This checklist is the release record for the current PhotoLUT mainline, includin
 - [x] `tests/browser_video_smoke.py` passes in Actions run [#648](https://github.com/bajomes/PhotoLUT/actions/runs/42375813854), covering HLG inspection, HLG/Rec.709 profile requests, preview controls, device status, and output naming.
 - [x] Docker CI creates a real Ultra HDR output from a 16-bit TIFF, probes gain-map metadata, decodes both SDR and HDR renditions, and checks the configured boost ceiling (Actions run [#648](https://github.com/bajomes/PhotoLUT/actions/runs/42375813854)).
 - [ ] Upload limits, malformed inputs, unsupported color profiles, timeout handling, cancellation, temporary-file cleanup, and concurrent processing limits are covered.
-- [x] The pinned libultrahdr source revision and bundled dual MIT/Apache-2.0 license are verified in Docker CI run [#648](https://github.com/bajomes/PhotoLUT/actions/runs/42375813854). Complete the remaining dependency/security review before release.
+- [x] The pinned libultrahdr source revision and bundled dual MIT/Apache-2.0 license are verified in Docker CI run [#648](https://github.com/bajomes/PhotoLUT/actions/runs/42375813854).
+- [ ] Dependency vulnerability audit via `pip-audit --strict -r requirements.txt` is now part of CI; record the result for the current head before release.
 
 ## Photo workflow acceptance
 
@@ -57,6 +58,13 @@ Record the following before publishing a final release:
 
 A green hosted CI run proves only the checks executed by that workflow. It does not substitute for the target NVIDIA GPU test or physical HDR-display review.
 
+## Security and memory review
+
+- [x] Uploads are streamed in 1 MiB chunks and checked against per-file and total request limits; output paths are constrained to the job output directory; subprocesses are invoked with argument arrays rather than shell interpolation; temporary output is cleaned on errors and cancellation paths are covered by tests.
+- [x] Heavy RAW processing defaults to one active job (configurable up to two); LUT interpolation and image quantization use bounded tiles/row chunks; prior full-resolution buffers are released before the next RAW file is decoded.
+- [ ] Record a peak-RSS stress run using the largest supported RAW dimensions and an 8 MP Ultra HDR TIFF, including concurrent upload pressure. The code-level review does not replace measurement on the deployment host.
+- [ ] Complete the current-head dependency vulnerability audit and review any advisories before release.
+
 ## Open-source implementation references
 
 - [google/libultrahdr](https://github.com/google/libultrahdr): reference gain-map encoder/decoder and backward-compatible SDR-base model. PhotoLUT pins a specific release/commit rather than tracking upstream main.
@@ -70,7 +78,7 @@ Respect each upstream project's license. Do not copy GPL-licensed source into th
 ## Latest hosted CI evidence
 
 - PR: [#62](https://github.com/bajomes/PhotoLUT/pull/62)
-- Verified head: `12615d6a63bfd89915fda575aab967e134251a0d`
+- Verified code head: `12615d6a63bfd89915fda575aab967e134251a0d` (run #648). Follow-up release tooling and CI security-audit commits are under a new CI run.
 - Workflow: [Actions run #648](https://github.com/bajomes/PhotoLUT/actions/runs/42375813854) — both `test` and `docker-smoke` jobs succeeded.
 - Python result: 170 passed, 1 skipped in 71.09 seconds. The skip is the hardware integration test because the hosted runner does not expose the required custom LUT option; it is explicitly not counted as GPU validation.
 - Docker result: production and GPU-test images built; libultrahdr license check, real Ultra HDR encode/decode, unprivileged runtime, UI/API smoke, and browser photo/video checks passed.
