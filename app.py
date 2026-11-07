@@ -388,7 +388,10 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
             daemon=True,
             name=f"photolut-{job.id[:8]}",
         )
-        worker.start()
+        try:
+            worker.start()
+        except Exception as exc:
+            raise HTTPException(500, "Could not start processing job") from exc
         slot_transferred_to_worker = True
         return {"job_id": job.id}
     except BaseException as exc:
