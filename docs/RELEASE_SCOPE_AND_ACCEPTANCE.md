@@ -50,23 +50,23 @@ Status vocabulary is strict: **LULUS** means executed and passed; **GAGAL** mean
 
 | ID | Scenario / input | Expected result and predeclared tolerance | Evidence / current status |
 |---|---|---|---|
-| IMP-01 | Upload 1–20 RAW files, valid `.cube`, supported sRGB setting | Valid job created; invalid extension, empty/malformed upload and size/count limit rejected with actionable HTTP error | `tests/test_api_validation.py`, `tests/test_app.py`; **BELUM DIJALANKAN** on release baseline |
-| LUT-01 | Identity 2×2×2 and larger LUTs | Identity error max absolute ≤ 1e-6 in float32 synthetic test | `tests/test_core.py`; **BELUM DIJALANKAN** on release baseline |
+| IMP-01 | Upload 1–20 RAW files, valid `.cube`, supported sRGB setting | Valid job created; invalid extension, empty/malformed upload and size/count limit rejected with actionable HTTP error | `tests/test_api_validation.py`, `tests/test_app.py`; **LULUS** in CI run #42405436400 (122 tests passed overall) |
+| LUT-01 | Identity 2×2×2 and larger LUTs | Identity error max absolute ≤ 1e-6 in float32 synthetic test | `tests/test_core.py`; **LULUS** in CI run #42405436400 |
 | LUT-02 | Channel permutation and analytic affine LUT | Trilinear result max absolute ≤ 2e-6 for supported synthetic fixture | `tests/test_core.py`; **BELUM DIJALANKAN** on release baseline |
-| LUT-03 | Malformed rows, duplicate/missing size, invalid domain, NaN/Inf, over-limit LUT | Reject before export; no partial success artifact | `tests/test_core.py`, `tests/test_lut_overflow.py`; **BELUM DIJALANKAN** on release baseline |
+| LUT-03 | Malformed rows, duplicate/missing size, invalid domain, NaN/Inf, over-limit LUT | Reject before export; no partial success artifact | `tests/test_core.py`, `tests/test_lut_overflow.py`; **LULUS** in CI run #42405436400 |
 | INT-01 | Intensity 0, 0.5, 1 | 0 and 1 endpoints array-equal to original/graded; 0.5 blend in linear-light sRGB with max absolute error ≤ 1e-6 against reference | `tests/test_core.py`; **BELUM DIJALANKAN** on release baseline |
-| COL-01 | LUT domain clipping and finite image boundaries | Values are clipped to declared LUT domain, output RGB remains finite and in [0,1] | `tests/test_core.py`, `tests/test_memory_footprint.py`; **BELUM DIJALANKAN** on release baseline |
-| COL-02 | TIFF export from deterministic RGB float fixture | uint16 RGB samples exactly equal `rint(pixel × 65535)`; embedded sRGB ICC present | `tests/test_raw_integration.py`; **BELUM DIJALANKAN** on release baseline |
+| COL-01 | LUT domain clipping and finite image boundaries | Values are clipped to declared LUT domain, output RGB remains finite and in [0,1] | `tests/test_core.py`, `tests/test_memory_footprint.py`; **LULUS** in CI run #42405436400 |
+| COL-02 | TIFF export from deterministic RGB float fixture | uint16 RGB samples exactly equal `rint(pixel × 65535)`; embedded sRGB ICC present | `tests/test_raw_integration.py`; **LULUS** in CI run #42405436400 using the pinned Nikon NEF ×2 and Canon CR2 fixtures |
 | COL-03 | JPEG export from deterministic RGB fixture | RGB mode, quality 95, embedded sRGB ICC; lossy pixel equality is not asserted | `tests/test_raw_integration.py`; **BELUM DIJALANKAN** on release baseline |
 | COL-04 | RAW alpha / TIFF alpha input | Not applicable; RGB-only input/output contract. No alpha preservation claim | Scope contract; **LULUS** as an explicit exclusion |
-| PRE-01 | Preview and final export of same RAW/LUT | Same LUT/domain/intensity semantics; no pixel-identical requirement because preview uses half-size decode, 8-bit quantization and JPEG proxy. Compare UI preview against export visually on calibrated display as a separate manual check | `app.py` preview path; manual check **BELUM DIJALANKAN** |
-| UI-01 | Open format picker, Tab/Shift+Tab, wrap, Escape, close, backdrop, keyboard focus recovery | Focus remains in dialog; choices are traversed before close control; focus returns to trigger on close | `tests/browser_export_smoke.py`; latest CI for fix commit pending |
-| UI-02 | Select JPEG, TIFF, all; remove result; download during remove | Correct archive content; deletion cannot corrupt an in-flight response | `tests/browser_export_smoke.py`, `tests/test_file_response_leases.py`; **BELUM DIJALANKAN** on release baseline |
-| JOB-01 | Multi-file batch, progress and processing failure | Per-file progress and terminal done/failed state; previous image buffers released before next decode | `tests/test_processing_memory.py`, `tests/test_app.py`; **BELUM DIJALANKAN** on release baseline |
-| JOB-02 | Concurrent request over capacity and job cleanup | HTTP 429 when slots full; expired/orphaned files cleaned without deleting leased output | `tests/test_jobs.py`, `tests/test_job_cleanup_locks.py`; **BELUM DIJALANKAN** on release baseline |
-| BUILD-01 | Clean Docker build and app startup as non-root | Docker image builds; container serves UI and OpenAPI; no root runtime | `.github/workflows/tests.yml`; latest fix commit CI pending |
-| RAW-01 | Pinned Nikon NEF ×2 and Canon 5D Mark IV CR2 fixtures with ExifTool | RAW decode finite sRGB; identity/creative LUT; TIFF/JPEG, ICC, orientation and camera metadata verified | `tests/test_raw_integration.py`; latest pre-fix commit test job passed |
-| PERF-01 | 2400×3200 float32 RGB synthetic image, 17³ LUT, 256-pixel tiles | Peak RSS < 6× source image byte size in fresh Linux subprocess | `tests/test_memory_footprint.py`; latest pre-fix commit test job passed |
+| PRE-01 | Preview and final export of same RAW/LUT | Same LUT/domain/intensity semantics; no pixel-identical requirement because preview uses half-size decode, 8-bit quantization and JPEG proxy. Compare UI preview against export visually on calibrated display as a separate manual check | `app.py` preview path; automated parity semantics reviewed, calibrated-display manual comparison **BELUM DIJALANKAN** |
+| UI-01 | Open format picker, Tab/Shift+Tab, wrap, Escape, close, backdrop, keyboard focus recovery | Focus remains in dialog; choices are traversed before close control; focus returns to trigger on close | `tests/browser_export_smoke.py`; **LULUS** in CI run #42405436400 on commit `cb4c6c73747604f25a496fe9c88767d53a308e53` |
+| UI-02 | Select JPEG, TIFF, all; remove result; download during remove | Correct archive content; deletion cannot corrupt an in-flight response | `tests/browser_export_smoke.py`, `tests/test_file_response_leases.py`; **LULUS** in CI run #42405436400 |
+| JOB-01 | Multi-file batch, progress and processing failure | Per-file progress and terminal done/failed state; previous image buffers released before next decode | `tests/test_processing_memory.py`, `tests/test_app.py`; **LULUS** in CI run #42405436400 |
+| JOB-02 | Concurrent request over capacity and job cleanup | HTTP 429 when slots full; expired/orphaned files cleaned without deleting leased output | `tests/test_jobs.py`, `tests/test_job_cleanup_locks.py`; **LULUS** in CI run #42405436400 |
+| BUILD-01 | Clean Docker build and app startup as non-root | Docker image builds; container serves UI and OpenAPI; no root runtime | `.github/workflows/tests.yml`; Docker build, non-root startup, browser/API smoke **LULUS** in CI run #42405436400 |
+| RAW-01 | Pinned Nikon NEF ×2 and Canon 5D Mark IV CR2 fixtures with ExifTool | RAW decode finite sRGB; identity/creative LUT; TIFF/JPEG, ICC, orientation and camera metadata verified | `tests/test_raw_integration.py`; **LULUS** in CI run #42405436400 |
+| PERF-01 | 2400×3200 float32 RGB synthetic image, 17³ LUT, 256-pixel tiles | Peak RSS < 6× source image byte size in fresh Linux subprocess | `tests/test_memory_footprint.py`; **LULUS** in CI run #42405436400 |
 | PERF-02 | 24 MP RAW, reference CPU 8 physical cores / 32 GB RAM / NVMe SSD, single job | Target: ≤120 s per image; process peak RSS ≤4 GiB. Run `python scripts/benchmark_photo.py sample.NEF look.cube` in a fresh process 3 times; report median and max for total time and peak RSS | Benchmark script implemented; **TERHAMBAT** by absence of reference host |
 | VID-01 | Synthetic HLG BT.2020 10-bit source, NVIDIA NVDEC + Vulkan/libplacebo + NVENC | HLG output Main 10/BT.2020/HLG; Rec.709 output Main 10/BT.709; identity-LUT PSNR >30 dB | `tests/test_video_integration.py`; **TERHAMBAT** without supported NVIDIA hardware/driver/container runtime |
 | DOC-01 | Clean checkout setup, feature limits, release notes, license and known limitations | Instructions reproduce the local Docker workflow; MIT license and hardware-dependent limitations are explicit | `README.md`, `CHANGELOG.md`, `LICENSE`; final doc review **BELUM DIJALANKAN** |
@@ -82,7 +82,15 @@ Status vocabulary is strict: **LULUS** means executed and passed; **GAGAL** mean
 - Memory regression: peak RSS **<6×** the 2400×3200 float32 RGB input size on Linux.
 - Reference performance target: **≤120 s / 24 MP RAW** and **≤4 GiB peak RSS**, single worker, on the hardware definition in PERF-02. The executable measurement is `scripts/benchmark_photo.py`; the target is predeclared, not yet measured or passed.
 
-## 5. Environment, dependencies and reproducibility
+## 5. Execution snapshot
+
+GitHub Actions run **#42405436400** for PR #63 head commit `cb4c6c73747604f25a496fe9c88767d53a308e53` completed successfully:
+- Python/integration job: **122 passed, 1 skipped, 0 failed** in 81.59 seconds.
+- Docker/UI/API/Playwright smoke job: **success**.
+- The one skipped test is the physical GPU video integration because the hosted runner's FFmpeg lacks the custom `.cube` option in libplacebo. This is a hardware/toolchain limitation, not a pass.
+- This run validates the application code and PR #63 changes against the `main` base. It does not yet validate the separate PR #64 Compose overlay and release-document commits; those have their own CI run in progress.
+
+## 6. Environment, dependencies and reproducibility
 
 - Runtime baseline: Python 3.12 in Docker `python:3.12-slim-trixie`; Docker Compose; Linux container. Browser smoke uses Playwright Chromium.
 - Python runtime dependencies are version-constrained in `requirements.txt`; no pip lockfile is present. CI installs from that manifest, so fully hash-locked reproducibility is not yet established.
@@ -90,11 +98,11 @@ Status vocabulary is strict: **LULUS** means executed and passed; **GAGAL** mean
 - Photo processing is CPU-only. Video export requires a compatible NVIDIA GPU, driver, NVIDIA Container Toolkit, Vulkan and FFmpeg with the custom LUT option in libplacebo.
 - CI covers real RAW fixtures and Docker/browser smoke, but hosted runners do not prove physical NVIDIA GPU execution.
 
-## 6. Reference repositories and licensing
+## 7. Reference repositories and licensing
 
 No third-party implementation has been copied or adapted for this scope baseline. No external reference repository has been used as a code source. Product comparisons above are workflow-level benchmarks only. Any future code adaptation must record the exact repository URL and commit/tag, license, attribution obligations, dependency impact and platform compatibility before code is adopted.
 
-## 7. Release gate
+## 8. Release gate
 
 The photo release is ready for user acceptance only when every **Required** criterion has executed successfully, no unresolved critical/high defect remains, the reference performance target is measured, a clean Docker checkout is reproducible, and the handover artifacts are present. Optional video GPU validation is reported separately and must not be described as passed when hardware was unavailable.
 
