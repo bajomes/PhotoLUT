@@ -16,7 +16,7 @@
 | Export JPEG and 16-bit TIFF; download either or both as ZIP | **Required** | Existing advertised output formats. RGB output with embedded sRGB ICC profile. |
 | Remove an individual completed result | **Required** | Existing UI capability; must remain safe during concurrent downloads. |
 | Loading/progress and actionable errors | **Required** | Existing asynchronous batch job model; API validation, processing status and failure state must be visible. |
-| Temporary-result retention warning | **Required** | Job outputs expire 30 minutes after completion and are not restored after container recreation; the UI must warn before users lose access. |
+| Temporary-result retention warning | **Required** | Job outputs become eligible for cleanup after 30 minutes (cleanup runs every 2 minutes) and are not restored after container recreation; the UI must warn before users lose access. |
 | Cooperative cancellation of an active batch | **Optional** | No cancel endpoint exists. A safe implementation would only cancel between RAW files; interrupting an active LibRaw decode/export worker is not supported by the current thread model. |
 | Persistent project/session recovery | **Out of release** | PhotoLUT is a temporary batch processor, not a project/catalog manager. Users must download finished outputs; no recovery after container recreation is promised. |
 | Undo/redo history | **Out of release** | There is no edit stack or non-destructive project document. Adding history would require a broader editing model, not a safe small release fix. |
@@ -63,12 +63,12 @@ Status vocabulary is strict: **LULUS** means executed and passed; **GAGAL** mean
 | COL-03 | JPEG export from deterministic RGB fixture | RGB mode, quality 95, embedded sRGB ICC; lossy pixel equality is not asserted | `tests/test_raw_integration.py`; **LULUS** in CI run #42405436400 |
 | COL-04 | RAW alpha / TIFF alpha input | Not applicable; RGB-only input/output contract. No alpha preservation claim | Scope contract; **LULUS** as an explicit exclusion |
 | PRE-01 | Preview and final export of same RAW/LUT | Same LUT/domain/intensity semantics; no pixel-identical requirement because preview uses half-size decode, 8-bit quantization and JPEG proxy. Compare UI preview against export visually on calibrated display as a separate manual check | `tests/browser_export_smoke.py` black/white 1-pixel fixture verifies 0/50/100% intensity and 50% = sRGB 188; **LULUS** in CI run #42406297351; calibrated-display manual comparison **BELUM DIJALANKAN** |
-| UI-01 | Open format picker, Tab/Shift+Tab, wrap, Escape, close, backdrop, keyboard focus recovery | Focus remains in dialog; choices are traversed before close control; focus returns to trigger on close | `tests/browser_export_smoke.py`; PR #63 passed at `cb4c6c73747604f25a496fe9c88767d53a308e53`; integrated regression on latest PR #64 head **BELUM DIJALANKAN** |
+| UI-01 | Open format picker, Tab/Shift+Tab, wrap, Escape, close, backdrop, keyboard focus recovery | Focus remains in dialog; choices are traversed before close control; focus returns to trigger on close | `tests/browser_export_smoke.py`; **LULUS** in run #42406743222 |
 | UI-02 | Select JPEG, TIFF, all; remove result; download during remove | Correct archive content; deletion cannot corrupt an in-flight response | `tests/browser_export_smoke.py`, `tests/test_file_response_leases.py`; **LULUS** in CI run #42405436400 |
 | JOB-01 | Multi-file batch, progress and processing failure | Per-file progress and terminal done/failed state; previous image buffers released before next decode | `tests/test_processing_memory.py`, `tests/test_app.py`; **LULUS** in CI run #42405436400 |
 | JOB-02 | Concurrent request over capacity and job cleanup | HTTP 429 when slots full; expired/orphaned files cleaned without deleting leased output | `tests/test_jobs.py`, `tests/test_job_cleanup_locks.py`; **LULUS** in CI run #42405436400 |
-| RET-01 | Completed job and user opens results view | UI states 30-minute expiry and container-recreation loss; cleanup respects active output leases | `tests/browser_export_smoke.py`, `tests/test_jobs.py`; **BELUM DIJALANKAN** on latest PR #64 head |
-| BUILD-01 | Clean Docker build and app startup as non-root | Docker image builds; container serves UI and OpenAPI; no root runtime | `.github/workflows/tests.yml`; Docker build, non-root startup, browser/API smoke **LULUS** in CI run #42405436400 |
+| RET-01 | Completed job and user opens results view | UI states 30-minute retention and container-recreation loss; cleanup respects active output leases | `tests/browser_export_smoke.py`, `tests/test_jobs.py`; UI warning **LULUS** in run #42406743222; cleanup lease regression **LULUS** in baseline run #42405436400 |
+| BUILD-01 | Clean Docker build and app startup as non-root | Docker image builds; container serves UI and OpenAPI; no root runtime | `.github/workflows/tests.yml`; Docker build, non-root startup, browser/API smoke **LULUS** in run #42406743222 |
 | RAW-01 | Pinned Nikon NEF ×2 and Canon 5D Mark IV CR2 fixtures with ExifTool | RAW decode finite sRGB; identity/creative LUT; TIFF/JPEG, ICC, orientation and camera metadata verified | `tests/test_raw_integration.py`; **LULUS** in CI run #42405436400 |
 | PERF-01 | 2400×3200 float32 RGB synthetic image, 17³ LUT, 256-pixel tiles | Peak RSS < 6× source image byte size in fresh Linux subprocess | `tests/test_memory_footprint.py`; **LULUS** in CI run #42405436400 |
 | PERF-02 | 24 MP RAW, reference CPU 8 physical cores / 32 GB RAM / NVMe SSD, single job | Target: ≤120 s per image; process peak RSS ≤4 GiB. Run `python scripts/benchmark_photo.py sample.NEF look.cube` in a fresh process 3 times; report median and max for total time and peak RSS | Benchmark script implemented; **TERHAMBAT** by absence of reference host |
@@ -88,14 +88,34 @@ Status vocabulary is strict: **LULUS** means executed and passed; **GAGAL** mean
 
 ## 5. Execution snapshot
 
-GitHub Actions run **#42406297351** for PR #64 head commit `f872a5dbe005e52ed59dc108371d7cc5db38895e` completed successfully:
-- Python/integration job: **122 passed, 1 skipped, 0 failed** in 81.59 seconds.
-- Docker/UI/API/Playwright smoke job: **success**, including the 0%/50%/100% linear-light preview pixel assertions.
-- Both CPU and NVIDIA Compose configurations passed `docker compose config --quiet`; locked dependencies installed and `pip check` passed.
-- The one skipped test is the physical GPU video integration because the hosted runner's FFmpeg lacks the custom `.cube` option in libplacebo. This is a hardware/toolchain limitation, not a pass.
-- This run validates the preview implementation, dependency locks, Compose split, Docker image and application code on PR #64 before the subsequent retention/focus-trap integration commits. Those later commits require a fresh CI run.
+GitHub Actions run **#42406743222** for PR #64 head commit `5fda9cdf24712cb9eacb62267a29f1022e1d2917` completed successfully:
+- Python/integration job: **122 passed, 1 skipped, 0 failed** in 87.16 seconds.
+- Docker/UI/API/Playwright smoke job: **success**, including linear-light preview pixel assertions, result-retention warning, export-dialog focus trap and format selection.
+- CPU and NVIDIA Compose configurations passed `docker compose config --quiet`; locked dependency installation, `pip check`, Python compilation and Docker image build passed.
+- The one skipped test is the physical GPU video integration because the hosted runner lacks the required libplacebo custom-LUT/GPU stack. This is a hardware/toolchain limitation, not a pass.
+- The run covers the current PR #64 head, including the retention notice and keyboard-focus regression tests.
 
-## 6. Environment, dependencies and reproducibility
+## 6. Candidate checkout and clean setup
+
+The pull request candidate is published on `release/1.1.0-scope-and-acceptance`. From a fresh clone, use:
+
+```bash
+git clone https://github.com/bajomes/PhotoLUT.git
+cd PhotoLUT
+git fetch origin release/1.1.0-scope-and-acceptance
+git switch --track origin/release/1.1.0-scope-and-acceptance
+docker compose up --build -d
+```
+
+Open `http://127.0.0.1:8000`. This default path is the CPU photo workflow; NVIDIA passthrough is not required. To additionally exercise the optional HLG video workflow, use both Compose files:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build -d
+```
+
+The app's default work directory is container-local. Completed outputs are temporary; download them before the 30-minute retention window and before recreating the container. The optional video path requires the NVIDIA driver, NVIDIA Container Toolkit, Vulkan and a compatible FFmpeg build.
+
+## 7. Environment, dependencies and reproducibility
 
 - Runtime baseline: Python 3.12 in Docker `python:3.12-slim-trixie`; Docker Compose; Linux container. Browser smoke uses Playwright Chromium.
 - Direct runtime dependencies are exactly pinned in `requirements.txt`; `requirements.lock` pins the resolved runtime graph and `requirements-dev.lock` pins the CI/development graph from the passing Python 3.12 Linux CI environment. These locks pin versions but do not yet record artifact hashes; cross-platform wheel resolution can still differ.
@@ -103,11 +123,11 @@ GitHub Actions run **#42406297351** for PR #64 head commit `f872a5dbe005e52ed59d
 - Photo processing is CPU-only. Video export requires a compatible NVIDIA GPU, driver, NVIDIA Container Toolkit, Vulkan and FFmpeg with the custom LUT option in libplacebo.
 - CI covers real RAW fixtures and Docker/browser smoke, but hosted runners do not prove physical NVIDIA GPU execution.
 
-## 7. Reference repositories and licensing
+## 8. Reference repositories and licensing
 
 No third-party implementation has been copied or adapted for this scope baseline. No external reference repository has been used as a code source. Product comparisons above are workflow-level benchmarks only. Any future code adaptation must record the exact repository URL and commit/tag, license, attribution obligations, dependency impact and platform compatibility before code is adopted.
 
-## 8. Release gate
+## 9. Release gate
 
 The photo release is ready for user acceptance only when every **Required** criterion has executed successfully, no unresolved critical/high defect remains, the reference performance target is measured, a clean Docker checkout is reproducible, and the handover artifacts are present. Optional video GPU validation is reported separately and must not be described as passed when hardware was unavailable.
 
