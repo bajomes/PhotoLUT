@@ -4,7 +4,7 @@ PhotoLUT applies a 3D `.cube` creative LUT to RAW photographs and exports ready-
 
 ## Quick start
 
-Install Docker Desktop or Docker Engine with the Compose plugin. Check out the current project branch, then build and start PhotoLUT:
+Install Docker Desktop or Docker Engine with the Compose plugin. On Linux/macOS, run bash scripts/install.sh; on Windows PowerShell, run ./scripts/install.ps1. The scripts verify Docker/Compose, build and start the app, then wait for the local web UI. To start it manually:
 
 ```bash
 git fetch origin
@@ -26,6 +26,7 @@ docker compose down
 - Recognized RAW extensions: CR2, CR3, NEF, ARW, SRF, SR2, DNG, ORF, RW2, RAF, PEF, and 3FR. Successful decoding depends on the exact camera model being supported by rawpy/LibRaw.
 - 3D `.cube` LUTs, trilinear interpolation, and adjustable LUT intensity blended in linear-light sRGB, with a live preview of the first selected RAW photo.
 - 16-bit TIFF and high-quality JPEG exports.
+- Experimental Ultra HDR JPEG export from single-page 16-bit RGB/RGBA TIFF (8 MP limit); see [Ultra HDR photo export](docs/ultrahdr-photo-export.md). The HDR highlight range is estimated from SDR pixels, not recovered from an HDR capture.
 - Before/after comparison slider, job progress, and ZIP download.
 - sRGB ICC profile embedding and best-effort metadata copying with ExifTool.
 - Original input filenames are retained for the result cards; output filenames are normalized for portable filesystem use.
@@ -50,7 +51,7 @@ PhotoLUT's HLG LUT export produces an HEVC Main 10 HLG/BT.2020 master. TikTok's 
 
 ## Verification coverage
 
-GitHub Actions tests real RAW decoding and exports with two Nikon NEF samples and one Canon CR2 sample. The integration checks cover identity and creative LUTs, 16-bit TIFF pixels, JPEG output, embedded sRGB profiles, orientation, and selected camera metadata. The CI suite does not verify every listed extension or every camera model; validate samples from each target camera before relying on it for production work. A synthetic HLG video integration test is enabled only on runners that expose NVENC and FFmpeg `libplacebo` custom `.cube` LUT support; it converts a BT.709 test pattern into 10-bit BT.2020/HLG, runs both real NVIDIA GPU export profiles (HLG HDR and tone-mapped Rec.709 SDR), and verifies HEVC Main 10 plus the correct color metadata for each output. Standard hosted CI runners without that GPU stack skip this hardware-dependent integration test; passing their unit tests and Docker smoke test does not prove execution on a physical NVIDIA GPU. The test suite also checks that the built-in HLG LUT is a valid 3D cube. A separate CI job builds the Docker image and smoke-tests the web UI and OpenAPI schema.
+GitHub Actions tests real RAW decoding and exports with two Nikon NEF samples, Canon EOS 5D Mark IV CR2, Canon EOS R CR3, Sony a7 III ARW, and Fujifilm X-T4 RAF. The three additional CC0 fixtures are downloaded from the pinned v1 release of the public revelraw sample repository and checked against its published SHA-256 manifest. The integration checks cover identity and creative LUTs, 16-bit TIFF pixels, JPEG output, embedded sRGB profiles, orientation, and selected camera metadata. The CI suite does not verify every listed extension or every camera model; validate samples from each target camera before relying on it for production work. A synthetic HLG video integration test is enabled only on runners that expose NVENC and FFmpeg `libplacebo` custom `.cube` LUT support; it converts a BT.709 test pattern into 10-bit BT.2020/HLG, runs both real NVIDIA GPU export profiles (HLG HDR and tone-mapped Rec.709 SDR), and verifies HEVC Main 10 plus the correct color metadata for each output. Standard hosted CI runners without that GPU stack skip this hardware-dependent integration test; passing their unit tests and Docker smoke test does not prove execution on a physical NVIDIA GPU. The test suite also checks that the built-in HLG LUT is a valid 3D cube. A separate CI job builds the Docker image and smoke-tests the web UI and OpenAPI schema.
 
 When running `pytest -q` locally without sample files in `test-data/`, the real-RAW integration cases are skipped. Set `PHOTOLUT_TEST_RAW_DIR` to a directory containing the three fixture files to run them locally.
 
@@ -89,9 +90,21 @@ pytest -q
 
 On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1`.
 
-Automated tests cover LUT parsing, interpolation, malformed LUT rejection, upload validation and limits, API processing and export, output profiles, metadata behavior, and job cleanup. Real-RAW CI fixtures currently cover Nikon NEF and Canon CR2; other camera models still need representative validation.
+Automated tests cover LUT parsing, interpolation, malformed LUT rejection, upload validation and limits, API processing and export, output profiles, metadata behavior, and job cleanup. Real-RAW CI fixtures cover Nikon NEF, Canon CR2/CR3, Sony ARW, and Fujifilm RAF. Other camera models still need representative validation.
 
 
 ## License
 
 PhotoLUT is distributed under the MIT License. See [LICENSE](LICENSE).
+
+
+## NVIDIA GPU integration test
+
+The normal hosted CI runner cannot execute the NVIDIA video pipeline. The Dockerfile includes a separate test image that contains the real GPU integration test without adding pytest to the production image. On a Linux or Docker Desktop host with NVIDIA Container Toolkit and a supported NVIDIA GPU, run:
+
+```bash
+docker build --target gpu-test -t photolut:gpu-test .
+docker run --rm --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all photolut:gpu-test
+```
+
+This exercises both HLG HDR and Rec.709 SDR exports through NVDEC, NVIDIA Vulkan/libplacebo, and NVENC. The test does not fall back to CPU processing; a missing or unusable NVIDIA device is reported as a failure. The image build checks the required FFmpeg filters and encoders, and the test is kept separate from the production runtime.

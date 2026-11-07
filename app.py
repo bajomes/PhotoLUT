@@ -18,12 +18,14 @@ import numpy as np
 import tifffile
 from fastapi import FastAPI, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
 import core
 import jobs
 import video
+import hdr_photo
 
 
 class LeasedFileResponse(FileResponse):
@@ -281,8 +283,11 @@ async def preview(raw_file: UploadFile, cube: UploadFile,
     ext = Path(raw_file.filename or "").suffix.lower()
     if ext not in RAW_EXTENSIONS:
         raise HTTPException(400, f"Unsupported RAW format: {ext or '(no extension)'}")
-    slot_acquired = False
+    if not PROCESSING_SLOTS.acquire(blocking=False):
+        raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
     try:
+        # Reserve capacity before accepting uploads so concurrent clients cannot
+        # fill the work directory while all processing slots are occupied.
         with tempfile.TemporaryDirectory(prefix="photolut-preview-") as temp_dir:
             temp_path = Path(temp_dir)
             cube_path = temp_path / "input.cube"
@@ -293,9 +298,6 @@ async def preview(raw_file: UploadFile, cube: UploadFile,
             await _save_upload(
                 raw_file, raw_path, MAX_RAW_BYTES, MAX_TOTAL_UPLOAD_BYTES - cube_size
             )
-            if not PROCESSING_SLOTS.acquire(blocking=False):
-                raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
-            slot_acquired = True
             render_task = asyncio.create_task(
                 asyncio.to_thread(_render_preview, raw_path, cube_path, colorspace)
             )
@@ -317,8 +319,7 @@ async def preview(raw_file: UploadFile, cube: UploadFile,
                     422, "Could not generate preview. Check the RAW photo and .cube LUT."
                 ) from exc
     finally:
-        if slot_acquired:
-            PROCESSING_SLOTS.release()
+        PROCESSING_SLOTS.release()
 
 
 @app.post("/api/process")
@@ -347,58 +348,136 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
             raise HTTPException(400, f"Unsupported RAW format: {ext or '(no extension)'}")
         raw_exts.append(ext)
 
-    job = jobs.create_job()
-    job_dir = WORK_DIR / job.id
-    try:
-        job_dir.mkdir(parents=True, exist_ok=False)
-    except Exception as exc:
-        jobs.update_job(job.id, status=jobs.JobStatus.FAILED, message="Could not create job directory")
-        raise HTTPException(500, "Could not create processing job") from exc
+    if not PROCESSING_SLOTS.acquire(blocking=False):
+        raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
 
-    cube_path = job_dir / "input.cube"
-    raw_paths: list[Path] = []
-    original_filenames: list[str] = []
+    slot_transferred_to_worker = False
+    job = None
+    job_dir = None
     try:
+        # Reserve a heavy-processing slot before writing potentially large
+        # uploads. This bounds concurrent disk pressure as well as CPU/RAM use.
+        job = jobs.create_job()
+        job_dir = WORK_DIR / job.id
+        try:
+            job_dir.mkdir(parents=True, exist_ok=False)
+        except Exception as exc:
+            jobs.update_job(job.id, status=jobs.JobStatus.FAILED,
+                            message="Could not create job directory")
+            raise HTTPException(500, "Could not create processing job") from exc
+
+        cube_path = job_dir / "input.cube"
+        raw_paths: list[Path] = []
+        original_filenames: list[str] = []
         total_uploaded = await _save_upload(
             cube, cube_path, MAX_CUBE_BYTES, MAX_TOTAL_UPLOAD_BYTES
         )
         for i, (raw, ext) in enumerate(zip(raw_files, raw_exts)):
             original = (raw.filename or f"photo_{i + 1}{ext}").replace(chr(92), "/").rsplit("/", 1)[-1]
-            p = job_dir / f"input_{i}{ext}"
+            path = job_dir / f"input_{i}{ext}"
             uploaded_size = await _save_upload(
-                raw, p, MAX_RAW_BYTES, MAX_TOTAL_UPLOAD_BYTES - total_uploaded
+                raw, path, MAX_RAW_BYTES, MAX_TOTAL_UPLOAD_BYTES - total_uploaded
             )
             total_uploaded += uploaded_size
-            raw_paths.append(p)
+            raw_paths.append(path)
             original_filenames.append(original)
-    except BaseException as exc:
-        shutil.rmtree(job_dir, ignore_errors=True)
-        jobs.update_job(job.id, status=jobs.JobStatus.FAILED, message="Upload failed")
-        if isinstance(exc, HTTPException):
-            raise
-        if isinstance(exc, Exception):
-            raise HTTPException(422, "Failed to save uploads") from exc
-        raise
 
-    if not PROCESSING_SLOTS.acquire(blocking=False):
-        shutil.rmtree(job_dir, ignore_errors=True)
-        jobs.update_job(job.id, status=jobs.JobStatus.FAILED, message="Processor busy")
-        raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
-
-    try:
-        threading.Thread(
+        worker = threading.Thread(
             target=_run_job_with_slot,
             args=(job.id, raw_paths, original_filenames, cube_path, job_dir, colorspace, intensity),
             daemon=True,
             name=f"photolut-{job.id[:8]}",
-        ).start()
-    except Exception as exc:
-        shutil.rmtree(job_dir, ignore_errors=True)
-        jobs.update_job(job.id, status=jobs.JobStatus.FAILED, message="Could not start processing")
-        PROCESSING_SLOTS.release()
-        raise HTTPException(500, "Could not start processing job") from exc
+        )
+        try:
+            worker.start()
+        except Exception as exc:
+            raise HTTPException(500, "Could not start processing job") from exc
+        slot_transferred_to_worker = True
+        return {"job_id": job.id}
+    except BaseException as exc:
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        if job is not None:
+            jobs.update_job(job.id, status=jobs.JobStatus.FAILED,
+                            message="Upload or job startup failed")
+        if isinstance(exc, HTTPException):
+            raise
+        if isinstance(exc, Exception):
+            raise HTTPException(422, "Failed to save uploads or start processing") from exc
+        raise
+    finally:
+        if not slot_transferred_to_worker:
+            PROCESSING_SLOTS.release()
 
-    return {"job_id": job.id}
+
+
+@app.post("/api/ultrahdr/export")
+async def export_ultrahdr_photo(
+    tiff_file: UploadFile,
+    quality: int = Form(95),
+    max_boost: float = Form(hdr_photo.DEFAULT_BOOST),
+) -> FileResponse:
+    """Convert an SDR sRGB 16-bit TIFF to an experimental Ultra HDR JPEG."""
+    filename = tiff_file.filename or "photo.tiff"
+    if Path(filename).suffix.lower() not in {".tif", ".tiff"}:
+        raise HTTPException(400, "Input must be a .tif or .tiff file")
+    if not 1 <= quality <= 100:
+        raise HTTPException(422, "JPEG quality must be between 1 and 100")
+    if not (1.0 < max_boost <= 8.0):
+        raise HTTPException(422, "Max Boost must be greater than 1 and no more than 8")
+    if not PROCESSING_SLOTS.acquire(blocking=False):
+        raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
+
+    job_dir: Path | None = None
+    try:
+        # Create the job directory only after entering the cleanup/release guard;
+        # filesystem errors must not leak the processing semaphore slot.
+        job_dir = Path(tempfile.mkdtemp(prefix="photolut-ultrahdr-", dir=WORK_DIR))
+        source = job_dir / "input.tiff"
+        output = job_dir / f"{_safe_output_stem(filename)}_ultrahdr.jpg"
+        await _save_upload(tiff_file, source, hdr_photo.MAX_TIFF_BYTES,
+                           hdr_photo.MAX_TIFF_BYTES)
+        encode_task = asyncio.create_task(asyncio.to_thread(
+            hdr_photo.export_ultrahdr, source, output,
+            quality=quality, max_boost=max_boost,
+        ))
+        try:
+            result = await asyncio.shield(encode_task)
+        except asyncio.CancelledError:
+            # A cancelled request does not stop its worker thread. Wait for it
+            # before the finally block removes its directory or releases its slot.
+            try:
+                await encode_task
+            except Exception:
+                pass
+            raise
+        if not output.is_file() or not result.get("gain_map_verified"):
+            raise HTTPException(422, "Ultra HDR encoder did not produce a verified gain map")
+        return FileResponse(
+            output, media_type="image/jpeg", filename=output.name,
+            headers={"X-PhotoLUT-Gain-Map-Verified": "true"},
+            background=BackgroundTask(shutil.rmtree, job_dir, ignore_errors=True),
+        )
+    except HTTPException:
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        raise
+    except ValueError as exc:
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        raise HTTPException(422, str(exc)) from exc
+    except RuntimeError as exc:
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        message = str(exc).lower()
+        status = 503 if "not installed" in message else 504 if "timed out" in message else 422
+        raise HTTPException(status, str(exc)) from exc
+    except Exception as exc:
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        raise HTTPException(500, "Ultra HDR export failed") from exc
+    finally:
+        PROCESSING_SLOTS.release()
 
 
 @app.get("/api/jobs/{job_id}")

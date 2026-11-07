@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate Linux installer and GPU validation script syntax
+        run: bash -n scripts/install.sh scripts/validate_nvidia_gpu.sh
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -31,7 +33,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest httpx2
+          pip install -r requirements.txt pytest httpx2 pip-audit
+      - name: Audit Python dependencies for known vulnerabilities
+        run: pip-audit --strict -r requirements.txt
       - name: Download pinned RAW integration fixtures
         run: |
           mkdir -p test-data
@@ -41,6 +45,13 @@ jobs:
             https://raw.githubusercontent.com/letmaik/rawpy/a39c2e7a44911889c3360891012f862f904ba551/test/iss042e297200.NEF
           curl --fail --location --retry 3 --output test-data/Canon-5D-Mark-IV.CR2 https://github.com/tellodaniel/revelraw-sample-raw-files/releases/download/v1/Canon-5D-Mark-IV.CR2
           echo "02b23f9cc6dc4c99fb39aa4d1f65ac227804d06461ac1bd0f842aa2f3beb8fe4  test-data/Canon-5D-Mark-IV.CR2" | sha256sum -c -
+          curl --fail --location --retry 3 --output test-data/CC0-SHA256SUMS.txt https://github.com/tellodaniel/revelraw-sample-raw-files/releases/download/v1/SHA256SUMS.txt
+          for fixture in Sony-a7III.ARW Canon-EOS-R.CR3 Fujifilm-X-T4.RAF; do
+            curl --fail --location --retry 3 --output "test-data/$fixture" "https://github.com/tellodaniel/revelraw-sample-raw-files/releases/download/v1/$fixture"
+          done
+          awk '$2 == "Sony-a7III.ARW" || $2 == "Canon-EOS-R.CR3" || $2 == "Fujifilm-X-T4.RAF" { print $1 "  test-data/" $2 }' test-data/CC0-SHA256SUMS.txt > test-data/selected-cc0-sums.txt
+          test "$(wc -l < test-data/selected-cc0-sums.txt)" -eq 3
+          sha256sum --check test-data/selected-cc0-sums.txt
       - name: Run tests
         env:
           PHOTOLUT_TEST_RAW_DIR: test-data
@@ -54,6 +65,64 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build Docker image
         run: docker build --tag photolut:ci .
+      - name: Build NVIDIA GPU integration test image
+        run: |
+          docker build --target gpu-test --tag photolut:gpu-test .
+          docker run --rm --entrypoint python photolut:gpu-test -m pytest --version
+      - name: Verify bundled libultrahdr license
+        run: |
+          docker run --rm --entrypoint sh photolut:ci -c 'test -s /usr/share/doc/libultrahdr/LICENSE && grep -q "MIT License" /usr/share/doc/libultrahdr/LICENSE && grep -q "Apache License" /usr/share/doc/libultrahdr/LICENSE'
+      - name: Run real Ultra HDR TIFF integration test
+        run: |
+          docker run --rm --entrypoint python photolut:ci -c '
+          from pathlib import Path
+          import tempfile
+          import subprocess
+          import numpy as np
+          import tifffile
+          from hdr_photo import export_ultrahdr
+
+          with tempfile.TemporaryDirectory() as directory:
+              root = Path(directory)
+              source = root / "fixture.tiff"
+              output = root / "fixture-ultrahdr.jpg"
+              pixels = np.zeros((32, 48, 3), dtype=np.uint16)
+              gradient = np.linspace(1000, 65535, 48, dtype=np.uint16)
+              pixels[..., 0] = gradient
+              pixels[..., 1] = gradient
+              pixels[..., 2] = gradient
+              tifffile.imwrite(source, pixels, photometric="rgb")
+              result = export_ultrahdr(source, output)
+              assert output.is_file() and output.stat().st_size > 100
+              assert result["gain_map_verified"] is True
+              assert 1.5 < result["max_content_boost"] <= 4.0
+
+              hdr_raw = root / "decoded-hdr-linear-f16.raw"
+              hdr_decode = subprocess.run(
+                  ["ultrahdr_app", "-m", "1", "-j", str(output),
+                   "-o", "0", "-O", "4", "-z", str(hdr_raw)],
+                  capture_output=True, text=True, check=False,
+              )
+              assert hdr_decode.returncode == 0, hdr_decode.stderr
+              hdr = np.fromfile(hdr_raw, dtype=np.float16)
+              assert hdr.size == 32 * 48 * 4
+              hdr = hdr.reshape(32, 48, 4)
+              assert np.isfinite(hdr).all()
+              assert np.allclose(hdr[..., 3], 1.0, atol=1e-3)
+              assert float(hdr[..., :3].max()) > 1.5
+
+              sdr_raw = root / "decoded-sdr-srgb-u8.raw"
+              sdr_decode = subprocess.run(
+                  ["ultrahdr_app", "-m", "1", "-j", str(output),
+                   "-o", "3", "-O", "3", "-z", str(sdr_raw)],
+                  capture_output=True, text=True, check=False,
+              )
+              assert sdr_decode.returncode == 0, sdr_decode.stderr
+              sdr = np.fromfile(sdr_raw, dtype=np.uint8)
+              assert sdr.size == 32 * 48 * 4
+              assert sdr.reshape(32, 48, 4)[..., 3].min() == 255
+              print(result)
+          '
       - name: Install Playwright browser
         run: |
           python -m pip install playwright
@@ -104,6 +173,8 @@ jobs:
           grep -q 'remove-result' /tmp/photolut-index.html
           grep -q 'family=Inter:wght@100..900' /tmp/photolut-index.html
           grep -q 'Process batch' /tmp/photolut-index.html
+          grep -q 'id="ultraHdrTiff"' /tmp/photolut-index.html
+          grep -q 'id="ultraHdrExportBtn"' /tmp/photolut-index.html
           curl --fail --silent http://127.0.0.1:8000/luts/photolut-neutral-hlg-bt2020.cube --output /tmp/photolut-neutral-hlg-bt2020.cube
           grep -q 'LUT_3D_SIZE 17' /tmp/photolut-neutral-hlg-bt2020.cube
           python - <<'PY'
@@ -134,6 +205,8 @@ jobs:
           PY
           node --check /tmp/photolut-inline.js
           python tests/browser_export_smoke.py
+          python tests/browser_video_smoke.py
+          python tests/browser_smoke.py
           curl --fail --silent http://127.0.0.1:8000/openapi.json |
             python -c 'import json, sys; schema=json.load(sys.stdin); assert "delete" in schema["paths"]["/api/jobs/{job_id}/outputs/{output_id}"]'
           curl --fail --silent http://127.0.0.1:8000/openapi.json |
