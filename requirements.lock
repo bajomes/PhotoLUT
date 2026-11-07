@@ -1,0 +1,23 @@
+# Resolved runtime dependency versions from the passing Python 3.12 Linux CI environment.
+# Versions are pinned; artifact hashes are not yet recorded.
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.16.0
+click==8.5.1
+fastapi==0.162.0
+h11==0.16.0
+idna==3.20
+numpy==2.5.4
+opentelemetry-api==1.45.2
+packaging==26.3
+pillow==13.0.0
+pydantic==2.14.3
+pydantic-core==2.50.4
+python-multipart==0.0.32
+rawpy==0.27.1
+starlette==1.10.0
+tifffile==2026.10.15
+truststore==0.10.5
+typing-extensions==4.16.0
+typing-inspection==0.4.5
+uvicorn==0.54.0
