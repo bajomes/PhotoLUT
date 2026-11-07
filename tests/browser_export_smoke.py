@@ -113,6 +113,15 @@ def main() -> None:
         expect(page.locator(".result-card")).to_have_count(1)
         expect(page.locator("#summary")).to_contain_text("1 photos available for export")
 
+        # The export picker must be keyboard-operable as well as clickable:
+        # opening it moves focus into the options, and Escape closes it.
+        page.locator("#dlZip").click()
+        expect(page.locator("#downloadPicker")).to_be_visible()
+        expect(page.locator("#downloadOptions button").first).to_be_focused()
+        page.keyboard.press("Escape")
+        expect(page.locator("#downloadPicker")).to_be_hidden()
+        expect(page.locator("#dlZip")).to_be_focused()
+
         for archive_format in ("jpeg", "tiff", "all"):
             page.locator("#dlZip").click()
             expect(page.locator("#downloadPicker")).to_be_visible()
