@@ -429,7 +429,10 @@ document.addEventListener("keydown",e=>{
   const dialog=$("downloadPicker").querySelector(".download-dialog");
   const focusable=Array.from(dialog.querySelectorAll(
     'button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
-  )).filter(element=>!element.hidden&&element.getAttribute("aria-hidden")!=="true");
+  )).filter(element=>
+    element.tabIndex>=0&&element.getClientRects().length>0&&
+    !element.closest('[hidden],[inert],[aria-hidden="true"]')
+  );
   if(!focusable.length)return;
   const first=focusable[0],last=focusable[focusable.length-1];
   if(e.shiftKey&&document.activeElement===first){
