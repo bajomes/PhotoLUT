@@ -8,7 +8,7 @@ This checklist is the release record for the current PhotoLUT mainline, includin
 - [ ] Docker production image builds from a clean checkout.
 - [ ] Container starts as the unprivileged `photolut` user and serves the UI and OpenAPI schema.
 - [ ] Browser smoke covers photo preview, batch export, result deletion, remaining-result state, JPEG/TIFF/ZIP selection, and the empty state.
-- [ ] Browser smoke covers video inspection, HLG/Rec.709 LUT-profile selection, comparison playback, and export UI.
+- [ ] `tests/browser_video_smoke.py` covers HLG source inspection, both HLG and Rec.709 profile requests, before/after preview controls, processing-device status, and output download naming.
 - [ ] Ultra HDR integration creates a JPEG_R-compatible output from a known 16-bit TIFF; decode and verify both SDR base and HDR rendition, gain-map metadata, ICC profile, and configured maximum content boost.
 - [ ] Upload limits, malformed inputs, unsupported color profiles, timeout handling, cancellation, temporary-file cleanup, and concurrent processing limits are covered.
 - [ ] Review dependency and container build changes; preserve third-party licenses and pinned source revisions.
