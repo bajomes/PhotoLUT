@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import json
 from urllib.parse import urlparse
 
@@ -12,16 +11,8 @@ PIXEL = (
     "R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="
 )
 
-def _solid_pixel(color: str) -> str:
-    svg = (
-        '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1">'
-        f'<rect width="1" height="1" fill="{color}"/></svg>'
-    )
-    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
-
-
-PREVIEW_BLACK = _solid_pixel("#000000")
-PREVIEW_WHITE = _solid_pixel("#ffffff")
+PREVIEW_BLACK = "/test-preview-black.svg"
+PREVIEW_WHITE = "/test-preview-white.svg"
 
 
 def _output(output_id: str, filename: str) -> dict:
@@ -49,7 +40,19 @@ def main() -> None:
             request = route.request
             parsed = urlparse(request.url)
 
-            if parsed.path == "/api/preview":
+            if parsed.path == PREVIEW_BLACK:
+                route.fulfill(
+                    status=200,
+                    content_type="image/svg+xml",
+                    body='<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="#000000"/></svg>',
+                )
+            elif parsed.path == PREVIEW_WHITE:
+                route.fulfill(
+                    status=200,
+                    content_type="image/svg+xml",
+                    body='<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="#ffffff"/></svg>',
+                )
+            elif parsed.path == "/api/preview":
                 route.fulfill(
                     status=200,
                     content_type="application/json",
