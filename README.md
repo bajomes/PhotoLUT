@@ -4,7 +4,7 @@ PhotoLUT applies a 3D `.cube` creative LUT to RAW photographs and exports ready-
 
 ## Quick start
 
-Install Docker Desktop or Docker Engine with the Compose plugin. Check out the current project branch, then build and start PhotoLUT:
+Install Docker Desktop or Docker Engine with the Compose plugin. On Linux/macOS, run bash scripts/install.sh; on Windows PowerShell, run ./scripts/install.ps1. The scripts verify Docker/Compose, build and start the app, then wait for the local web UI. To start it manually:
 
 ```bash
 git fetch origin
