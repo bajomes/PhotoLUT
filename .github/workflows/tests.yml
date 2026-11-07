@@ -45,6 +45,13 @@ jobs:
             https://raw.githubusercontent.com/letmaik/rawpy/a39c2e7a44911889c3360891012f862f904ba551/test/iss042e297200.NEF
           curl --fail --location --retry 3 --output test-data/Canon-5D-Mark-IV.CR2 https://github.com/tellodaniel/revelraw-sample-raw-files/releases/download/v1/Canon-5D-Mark-IV.CR2
           echo "02b23f9cc6dc4c99fb39aa4d1f65ac227804d06461ac1bd0f842aa2f3beb8fe4  test-data/Canon-5D-Mark-IV.CR2" | sha256sum -c -
+          curl --fail --location --retry 3 --output test-data/CC0-SHA256SUMS.txt https://github.com/tellodaniel/revelraw-sample-raw-files/releases/download/v1/SHA256SUMS.txt
+          for fixture in Sony-a7III.ARW Canon-EOS-R.CR3 Fujifilm-X-T4.RAF; do
+            curl --fail --location --retry 3 --output "test-data/$fixture" "https://github.com/tellodaniel/revelraw-sample-raw-files/releases/download/v1/$fixture"
+          done
+          awk '$2 == "Sony-a7III.ARW" || $2 == "Canon-EOS-R.CR3" || $2 == "Fujifilm-X-T4.RAF" { print $1 "  test-data/" $2 }' test-data/CC0-SHA256SUMS.txt > test-data/selected-cc0-sums.txt
+          test "$(wc -l < test-data/selected-cc0-sums.txt)" -eq 3
+          sha256sum --check test-data/selected-cc0-sums.txt
       - name: Run tests
         env:
           PHOTOLUT_TEST_RAW_DIR: test-data
