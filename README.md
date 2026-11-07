@@ -51,7 +51,7 @@ PhotoLUT's HLG LUT export produces an HEVC Main 10 HLG/BT.2020 master. TikTok's 
 
 ## Verification coverage
 
-GitHub Actions tests real RAW decoding and exports with two Nikon NEF samples and one Canon CR2 sample. The integration checks cover identity and creative LUTs, 16-bit TIFF pixels, JPEG output, embedded sRGB profiles, orientation, and selected camera metadata. The CI suite does not verify every listed extension or every camera model; validate samples from each target camera before relying on it for production work. A synthetic HLG video integration test is enabled only on runners that expose NVENC and FFmpeg `libplacebo` custom `.cube` LUT support; it converts a BT.709 test pattern into 10-bit BT.2020/HLG, runs both real NVIDIA GPU export profiles (HLG HDR and tone-mapped Rec.709 SDR), and verifies HEVC Main 10 plus the correct color metadata for each output. Standard hosted CI runners without that GPU stack skip this hardware-dependent integration test; passing their unit tests and Docker smoke test does not prove execution on a physical NVIDIA GPU. The test suite also checks that the built-in HLG LUT is a valid 3D cube. A separate CI job builds the Docker image and smoke-tests the web UI and OpenAPI schema.
+GitHub Actions tests real RAW decoding and exports with two Nikon NEF samples, Canon EOS 5D Mark IV CR2, Canon EOS R CR3, Sony a7 III ARW, and Fujifilm X-T4 RAF. The three additional CC0 fixtures are downloaded from the pinned v1 release of the public revelraw sample repository and checked against its published SHA-256 manifest. The integration checks cover identity and creative LUTs, 16-bit TIFF pixels, JPEG output, embedded sRGB profiles, orientation, and selected camera metadata. The CI suite does not verify every listed extension or every camera model; validate samples from each target camera before relying on it for production work. A synthetic HLG video integration test is enabled only on runners that expose NVENC and FFmpeg `libplacebo` custom `.cube` LUT support; it converts a BT.709 test pattern into 10-bit BT.2020/HLG, runs both real NVIDIA GPU export profiles (HLG HDR and tone-mapped Rec.709 SDR), and verifies HEVC Main 10 plus the correct color metadata for each output. Standard hosted CI runners without that GPU stack skip this hardware-dependent integration test; passing their unit tests and Docker smoke test does not prove execution on a physical NVIDIA GPU. The test suite also checks that the built-in HLG LUT is a valid 3D cube. A separate CI job builds the Docker image and smoke-tests the web UI and OpenAPI schema.
 
 When running `pytest -q` locally without sample files in `test-data/`, the real-RAW integration cases are skipped. Set `PHOTOLUT_TEST_RAW_DIR` to a directory containing the three fixture files to run them locally.
 
@@ -90,7 +90,7 @@ pytest -q
 
 On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1`.
 
-Automated tests cover LUT parsing, interpolation, malformed LUT rejection, upload validation and limits, API processing and export, output profiles, metadata behavior, and job cleanup. Real-RAW CI fixtures currently cover Nikon NEF and Canon CR2; other camera models still need representative validation.
+Automated tests cover LUT parsing, interpolation, malformed LUT rejection, upload validation and limits, API processing and export, output profiles, metadata behavior, and job cleanup. Real-RAW CI fixtures cover Nikon NEF, Canon CR2/CR3, Sony ARW, and Fujifilm RAF. Other camera models still need representative validation.
 
 
 ## License
