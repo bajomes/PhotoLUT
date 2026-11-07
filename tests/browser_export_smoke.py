@@ -119,6 +119,26 @@ def main() -> None:
         expect(page.locator("#downloadPicker")).to_be_visible()
         expect(page.locator("#downloadOptions button").first).to_be_focused()
 
+        # Hidden, inert, aria-hidden, and negative-tabindex descendants must
+        # never enter the modal's keyboard focus sequence.
+        page.evaluate("""
+            const dialog = document.querySelector(".download-dialog");
+            for (const attributes of [
+                {style: "display:none"},
+                {"aria-hidden": "true"},
+                {inert: ""},
+                {tabindex: "-2"},
+            ]) {
+                const button = document.createElement("button");
+                button.textContent = "not focusable";
+                for (const [name, value] of Object.entries(attributes)) {
+                    if (name === "style") button.style.cssText = value;
+                    else button.setAttribute(name, value);
+                }
+                dialog.appendChild(button);
+            }
+        """)
+
         # Forward navigation follows the visual order and wraps to the close
         # control instead of escaping the modal dialog.
         options = page.locator("#downloadOptions button")
