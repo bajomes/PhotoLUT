@@ -99,6 +99,14 @@ On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1
 Automated tests cover LUT parsing, interpolation, malformed LUT rejection, upload validation and limits, API processing and export, output profiles, metadata behavior, and job cleanup. Real-RAW CI fixtures currently cover Nikon NEF and Canon CR2; other camera models still need representative validation.
 
 
+## Release engineering records
+
+- [PhotoLUT 1.1.0 release scope and acceptance matrix](docs/RELEASE_SCOPE_AND_ACCEPTANCE.md)
+- [Architecture and risk audit](docs/ARCHITECTURE_RISK_AUDIT.md)
+- [Feature-parity contract draft (Gate B; product decision pending)](docs/FEATURE_PARITY_CONTRACT_DRAFT.md)
+
+The parity draft is not a claim of feature parity. Gate A release closure and Gate B parity are assessed independently.
+
 ## License
 
 PhotoLUT is distributed under the MIT License. See [LICENSE](LICENSE).
