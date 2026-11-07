@@ -283,8 +283,11 @@ async def preview(raw_file: UploadFile, cube: UploadFile,
     ext = Path(raw_file.filename or "").suffix.lower()
     if ext not in RAW_EXTENSIONS:
         raise HTTPException(400, f"Unsupported RAW format: {ext or '(no extension)'}")
-    slot_acquired = False
+    if not PROCESSING_SLOTS.acquire(blocking=False):
+        raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
     try:
+        # Reserve capacity before accepting uploads so concurrent clients cannot
+        # fill the work directory while all processing slots are occupied.
         with tempfile.TemporaryDirectory(prefix="photolut-preview-") as temp_dir:
             temp_path = Path(temp_dir)
             cube_path = temp_path / "input.cube"
@@ -295,9 +298,6 @@ async def preview(raw_file: UploadFile, cube: UploadFile,
             await _save_upload(
                 raw_file, raw_path, MAX_RAW_BYTES, MAX_TOTAL_UPLOAD_BYTES - cube_size
             )
-            if not PROCESSING_SLOTS.acquire(blocking=False):
-                raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
-            slot_acquired = True
             render_task = asyncio.create_task(
                 asyncio.to_thread(_render_preview, raw_path, cube_path, colorspace)
             )
@@ -319,8 +319,7 @@ async def preview(raw_file: UploadFile, cube: UploadFile,
                     422, "Could not generate preview. Check the RAW photo and .cube LUT."
                 ) from exc
     finally:
-        if slot_acquired:
-            PROCESSING_SLOTS.release()
+        PROCESSING_SLOTS.release()
 
 
 @app.post("/api/process")
@@ -349,58 +348,64 @@ async def process(raw_files: list[UploadFile], cube: UploadFile,
             raise HTTPException(400, f"Unsupported RAW format: {ext or '(no extension)'}")
         raw_exts.append(ext)
 
-    job = jobs.create_job()
-    job_dir = WORK_DIR / job.id
-    try:
-        job_dir.mkdir(parents=True, exist_ok=False)
-    except Exception as exc:
-        jobs.update_job(job.id, status=jobs.JobStatus.FAILED, message="Could not create job directory")
-        raise HTTPException(500, "Could not create processing job") from exc
+    if not PROCESSING_SLOTS.acquire(blocking=False):
+        raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
 
-    cube_path = job_dir / "input.cube"
-    raw_paths: list[Path] = []
-    original_filenames: list[str] = []
+    slot_transferred_to_worker = False
+    job = None
+    job_dir = None
     try:
+        # Reserve a heavy-processing slot before writing potentially large
+        # uploads. This bounds concurrent disk pressure as well as CPU/RAM use.
+        job = jobs.create_job()
+        job_dir = WORK_DIR / job.id
+        try:
+            job_dir.mkdir(parents=True, exist_ok=False)
+        except Exception as exc:
+            jobs.update_job(job.id, status=jobs.JobStatus.FAILED,
+                            message="Could not create job directory")
+            raise HTTPException(500, "Could not create processing job") from exc
+
+        cube_path = job_dir / "input.cube"
+        raw_paths: list[Path] = []
+        original_filenames: list[str] = []
         total_uploaded = await _save_upload(
             cube, cube_path, MAX_CUBE_BYTES, MAX_TOTAL_UPLOAD_BYTES
         )
         for i, (raw, ext) in enumerate(zip(raw_files, raw_exts)):
             original = (raw.filename or f"photo_{i + 1}{ext}").replace(chr(92), "/").rsplit("/", 1)[-1]
-            p = job_dir / f"input_{i}{ext}"
+            path = job_dir / f"input_{i}{ext}"
             uploaded_size = await _save_upload(
-                raw, p, MAX_RAW_BYTES, MAX_TOTAL_UPLOAD_BYTES - total_uploaded
+                raw, path, MAX_RAW_BYTES, MAX_TOTAL_UPLOAD_BYTES - total_uploaded
             )
             total_uploaded += uploaded_size
-            raw_paths.append(p)
+            raw_paths.append(path)
             original_filenames.append(original)
-    except BaseException as exc:
-        shutil.rmtree(job_dir, ignore_errors=True)
-        jobs.update_job(job.id, status=jobs.JobStatus.FAILED, message="Upload failed")
-        if isinstance(exc, HTTPException):
-            raise
-        if isinstance(exc, Exception):
-            raise HTTPException(422, "Failed to save uploads") from exc
-        raise
 
-    if not PROCESSING_SLOTS.acquire(blocking=False):
-        shutil.rmtree(job_dir, ignore_errors=True)
-        jobs.update_job(job.id, status=jobs.JobStatus.FAILED, message="Processor busy")
-        raise HTTPException(429, "The processor is busy. Please retry when a job finishes.")
-
-    try:
-        threading.Thread(
+        worker = threading.Thread(
             target=_run_job_with_slot,
             args=(job.id, raw_paths, original_filenames, cube_path, job_dir, colorspace, intensity),
             daemon=True,
             name=f"photolut-{job.id[:8]}",
-        ).start()
-    except Exception as exc:
-        shutil.rmtree(job_dir, ignore_errors=True)
-        jobs.update_job(job.id, status=jobs.JobStatus.FAILED, message="Could not start processing")
-        PROCESSING_SLOTS.release()
-        raise HTTPException(500, "Could not start processing job") from exc
+        )
+        worker.start()
+        slot_transferred_to_worker = True
+        return {"job_id": job.id}
+    except BaseException as exc:
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        if job is not None:
+            jobs.update_job(job.id, status=jobs.JobStatus.FAILED,
+                            message="Upload or job startup failed")
+        if isinstance(exc, HTTPException):
+            raise
+        if isinstance(exc, Exception):
+            raise HTTPException(422, "Failed to save uploads or start processing") from exc
+        raise
+    finally:
+        if not slot_transferred_to_worker:
+            PROCESSING_SLOTS.release()
 
-    return {"job_id": job.id}
 
 
 @app.post("/api/ultrahdr/export")
