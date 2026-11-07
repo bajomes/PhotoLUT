@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -58,6 +60,13 @@ def test_real_raw_identity_and_creative_luts_export_correctly(tmp_path, filename
     if shutil.which("exiftool") is None:
         pytest.skip("ExifTool is required for the metadata integration check")
 
+    source_metadata_result = subprocess.run(
+        ["exiftool", "-json", "-Make", "-Model", str(raw_path)],
+        capture_output=True, text=True, check=True,
+    )
+    source_metadata = json.loads(source_metadata_result.stdout)[0]
+    assert source_metadata.get("Make") and source_metadata.get("Model")
+
     image = core.decode_raw(raw_path)
     assert image.ndim == 3 and image.shape[-1] == 3
     assert image.dtype == np.float32
@@ -104,7 +113,18 @@ def test_real_raw_identity_and_creative_luts_export_correctly(tmp_path, filename
             assert jpeg.info.get("icc_profile"), "JPEG lost its embedded sRGB ICC profile"
             exif = jpeg.getexif()
             assert exif.get(274, 1) == 1, "JPEG orientation must be normalized to 1"
-            assert exif.get(271) or exif.get(272), "Camera make/model metadata was not copied"
+            assert exif.get(271) == source_metadata["Make"], "Camera make metadata changed"
+            assert exif.get(272) == source_metadata["Model"], "Camera model metadata changed"
+
+        # ExifTool should preserve source camera identity in both deliverable formats.
+        for output_path in (paths["tiff"], paths["jpeg"]):
+            output_metadata_result = subprocess.run(
+                ["exiftool", "-json", "-Make", "-Model", str(output_path)],
+                capture_output=True, text=True, check=True,
+            )
+            output_metadata = json.loads(output_metadata_result.stdout)[0]
+            assert output_metadata.get("Make") == source_metadata["Make"]
+            assert output_metadata.get("Model") == source_metadata["Model"]
 
         # The comparison previews should also advertise the display RGB profile.
         with Image.open(paths["preview_after"]) as preview:
