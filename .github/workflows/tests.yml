@@ -52,6 +52,10 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate CPU and NVIDIA Compose configurations
+        run: |
+          docker compose -f docker-compose.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.gpu.yml config --quiet
       - name: Build Docker image
         run: docker build --tag photolut:ci .
       - name: Install Playwright browser
