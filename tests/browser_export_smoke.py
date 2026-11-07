@@ -119,11 +119,28 @@ def main() -> None:
         expect(page.locator("#downloadPicker")).to_be_visible()
         expect(page.locator("#downloadOptions button").first).to_be_focused()
 
-        # Tab navigation must remain inside the modal dialog.
+        # Forward navigation follows the visual order and wraps to the close
+        # control instead of escaping the modal dialog.
+        options = page.locator("#downloadOptions button")
+        expect(options).to_have_count(3)
+        page.keyboard.press("Tab")
+        expect(options.nth(1)).to_be_focused()
+        page.keyboard.press("Tab")
+        expect(options.nth(2)).to_be_focused()
+        page.keyboard.press("Tab")
+        expect(page.locator("#closeDownloadPicker")).to_be_focused()
+
+        # Reverse navigation follows the same order and wraps at the start.
+        page.keyboard.press("Shift+Tab")
+        expect(options.nth(2)).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(options.nth(1)).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(options.nth(0)).to_be_focused()
         page.keyboard.press("Shift+Tab")
         expect(page.locator("#closeDownloadPicker")).to_be_focused()
         page.keyboard.press("Shift+Tab")
-        expect(page.locator("#downloadOptions button").last).to_be_focused()
+        expect(options.nth(2)).to_be_focused()
         page.keyboard.press("Tab")
         expect(page.locator("#closeDownloadPicker")).to_be_focused()
 
