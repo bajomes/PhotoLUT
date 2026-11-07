@@ -119,6 +119,16 @@ def main() -> None:
         expect(page.locator("#downloadPicker")).to_be_visible()
         expect(page.locator("#downloadOptions button").first).to_be_focused()
 
+        # If another script moves focus outside the open dialog, the next
+        # Tab key must pull it back into the dialog in the requested direction.
+        page.locator("#dlZip").focus()
+        page.keyboard.press("Tab")
+        expect(page.locator("#downloadOptions button").first).to_be_focused()
+        page.locator("#dlZip").focus()
+        page.keyboard.press("Shift+Tab")
+        expect(page.locator("#closeDownloadPicker")).to_be_focused()
+        page.locator("#downloadOptions button").first.focus()
+
         # Hidden, inert, aria-hidden, and negative-tabindex descendants must
         # never enter the modal's keyboard focus sequence.
         page.evaluate("""
