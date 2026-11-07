@@ -419,7 +419,29 @@ $("downloadOptions").addEventListener("click",e=>{
   if(option)downloadAll(option.dataset.format);
 });
 document.addEventListener("keydown",e=>{
-  if(e.key==="Escape"&&!$("downloadPicker").hidden)closeDownloadPicker();
+  if($("downloadPicker").hidden)return;
+  if(e.key==="Escape"){
+    e.preventDefault();
+    closeDownloadPicker();
+    return;
+  }
+  if(e.key!=="Tab")return;
+  const dialog=$("downloadPicker").querySelector(".download-dialog");
+  const focusable=Array.from(dialog.querySelectorAll(
+    'button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+  )).filter(element=>!element.hidden&&element.getAttribute("aria-hidden")!=="true");
+  if(!focusable.length)return;
+  const first=focusable[0],last=focusable[focusable.length-1];
+  if(e.shiftKey&&document.activeElement===first){
+    e.preventDefault();
+    last.focus();
+  }else if(!e.shiftKey&&document.activeElement===last){
+    e.preventDefault();
+    first.focus();
+  }else if(!dialog.contains(document.activeElement)){
+    e.preventDefault();
+    (e.shiftKey?last:first).focus();
+  }
 });
 $("newBatchBtn").addEventListener("click",()=>$("resetBtn").click());
 $("resetBtn").addEventListener("click",()=>{
