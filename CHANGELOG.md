@@ -4,7 +4,11 @@ Notable changes to PhotoLUT are documented here.
 
 ## Unreleased
 
+### Changed
+- Make NVIDIA GPU passthrough optional for the CPU-based RAW photo workflow; add a separate Compose overlay for the HLG video workflow.
+
 ### Added
+- Document the PhotoLUT 1.1.0 release boundary, architecture/color contract, acceptance IDs, numeric tolerances, performance target, and hardware-dependent validation gates.
 
 - Inspect HDR video metadata and identify HLG/BT.2020 10-bit sources before processing.
 - Apply 3D `.cube` LUTs to confirmed HLG footage and export HEVC Main 10 MP4 in 10-bit SDR BT.709; HLG is tone-mapped to SDR during export.
