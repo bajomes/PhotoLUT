@@ -1,10 +1,8 @@
 services:
     lutphoto:
         build: .
-        gpus: all
         environment:
             PHOTOLUT_CONCURRENCY: "${PHOTOLUT_CONCURRENCY:-1}"
-            NVIDIA_DRIVER_CAPABILITIES: "compute,utility,video,graphics"
         ports:
             - "127.0.0.1:8000:8000"
         restart: unless-stopped
