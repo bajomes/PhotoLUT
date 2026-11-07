@@ -433,6 +433,11 @@ document.addEventListener("keydown",e=>{
     element.tabIndex>=0&&!element.matches(":disabled")&&element.getClientRects().length>0&&
     !element.closest('[hidden],[inert],[aria-hidden="true"]')
   );
+  // Keep the export choices in the primary Tab sequence; place the visually
+  // secondary close control last so outside-dialog recovery and wrapping agree.
+  const closeButton=$("closeDownloadPicker");
+  const closeIndex=focusable.indexOf(closeButton);
+  if(closeIndex>=0)focusable.push(...focusable.splice(closeIndex,1));
   if(!focusable.length)return;
   const first=focusable[0],last=focusable[focusable.length-1];
   if(e.shiftKey&&document.activeElement===first){
