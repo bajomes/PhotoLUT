@@ -4,7 +4,7 @@ PhotoLUT applies a 3D `.cube` creative LUT to RAW photographs and exports ready-
 
 ## Quick start
 
-Install Docker Desktop or Docker Engine with the Compose plugin. Check out the current project branch, then build and start PhotoLUT:
+Install Docker Desktop or Docker Engine with the Compose plugin. Check out the current project branch, then build and start PhotoLUT for the CPU-based RAW photo workflow:
 
 ```bash
 git fetch origin
@@ -13,7 +13,15 @@ git pull --ff-only
 docker compose up --build -d
 ```
 
-Open http://127.0.0.1:8000 in a browser. The Compose port is bound to localhost by default. Job uploads and results stay in the container's temporary `/tmp/photolut-jobs` directory and are cleaned automatically after 30 minutes; Compose no longer creates a persistent `./jobs` mount on the host.
+Open http://127.0.0.1:8000 in a browser. The default Compose configuration does not require an NVIDIA GPU, because RAW photo processing runs on the CPU. Job uploads and results stay in the container's temporary `/tmp/photolut-jobs` directory and are cleaned automatically after 30 minutes; Compose no longer creates a persistent `./jobs` mount on the host.
+
+To enable the separate HLG video workflow, install a compatible NVIDIA driver and NVIDIA Container Toolkit, then start with the optional GPU overlay:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build -d
+```
+
+The GPU overlay enables device passthrough and the required NVIDIA driver capabilities. The photo workflow remains available without it. When stopping a GPU-enabled instance, use the same two Compose files with `down`.
 
 In the Video panel, inspect an HLG/BT.2020 source and select the color space in which the uploaded creative LUT was authored. The built-in Neutral HLG LUT is an identity transform; it preserves source colors without adding a creative tint. Choose **HLG / BT.2020** for a LUT authored for HLG-encoded BT.2020 RGB; the export remains HDR HLG. Choose **Rec.709** for standard SDR creative LUTs such as Sedona Standard; PhotoLUT tone-maps the HLG source to SDR BT.709 on the NVIDIA GPU before applying the LUT, and the export is correctly tagged SDR BT.709 rather than being mislabeled as HDR. Camera-Log LUTs are not supported. Both paths encode HEVC Main 10 and verify their output color metadata before returning the file. After export, a synchronized before/after comparison lets you wipe between the original clip and the graded result while previewing playback. The wipe is controlled directly inside the preview; playback includes a draggable seek timeline, 10-second skip controls, playback-speed selection, and fullscreen. To stop the app:
 
