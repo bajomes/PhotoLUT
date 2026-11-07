@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import io
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 
@@ -7,6 +9,7 @@ import numpy as np
 import pytest
 import tifffile
 from PIL import Image
+from starlette.datastructures import UploadFile
 
 import app
 
@@ -237,3 +240,34 @@ def test_delete_job_output_rejects_active_download_lease(tmp_path, monkeypatch):
             app.jobs._jobs.pop(job_id, None)
             app.jobs._output_locks.pop(job_id, None)
             app.jobs._active_output_leases.pop(job_id, None)
+
+
+
+@pytest.mark.parametrize("endpoint", ["preview", "process"])
+def test_busy_processor_rejects_before_uploading_files(endpoint, monkeypatch):
+    class BusySlots:
+        def acquire(self, blocking=False):
+            return False
+
+        def release(self):
+            raise AssertionError("a slot that was not acquired must not be released")
+
+    monkeypatch.setattr(app, "PROCESSING_SLOTS", BusySlots())
+
+    async def fail_if_upload_starts(*_args, **_kwargs):
+        pytest.fail("upload must not be written when all processing slots are busy")
+
+    monkeypatch.setattr(app, "_save_upload", fail_if_upload_starts)
+
+    raw = UploadFile(filename="sample.nef", file=io.BytesIO(b"raw-data"))
+    cube = UploadFile(filename="look.cube", file=io.BytesIO(b"LUT_3D_SIZE 2\\n"))
+
+    async def exercise():
+        with pytest.raises(app.HTTPException) as exc_info:
+            if endpoint == "preview":
+                await app.preview(raw, cube)
+            else:
+                await app.process([raw], cube)
+        assert exc_info.value.status_code == 429
+
+    asyncio.run(exercise())
