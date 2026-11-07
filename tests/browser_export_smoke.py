@@ -149,6 +149,82 @@ def main() -> None:
         page.locator('.result-card[data-output-id="0"] .remove-result').click()
         expect(page.locator(".result-card")).to_have_count(1)
         expect(page.locator("#summary")).to_contain_text("1 photos available for export")
+        expect(page.locator(".results-retention-note")).to_contain_text("30 minutes")
+
+        # The export picker must be keyboard-operable and restore focus.
+        page.locator("#dlZip").click()
+        expect(page.locator("#downloadPicker")).to_be_visible()
+        expect(page.locator("#downloadOptions button").first).to_be_focused()
+
+        # Recover focus if another script moved it outside the open dialog.
+        page.locator("#dlZip").focus()
+        page.keyboard.press("Tab")
+        expect(page.locator("#downloadOptions button").first).to_be_focused()
+        page.locator("#dlZip").focus()
+        page.keyboard.press("Shift+Tab")
+        expect(page.locator("#closeDownloadPicker")).to_be_focused()
+        page.locator("#downloadOptions button").first.focus()
+
+        # Hidden, inert, aria-hidden, disabled-fieldset, and negative-tabindex
+        # descendants must not be included in the modal focus sequence.
+        page.evaluate("""
+            const dialog = document.querySelector(".download-dialog");
+            for (const attributes of [
+                {style: "display:none"},
+                {"aria-hidden": "true"},
+                {inert: ""},
+                {tabindex: "-2"},
+            ]) {
+                const button = document.createElement("button");
+                button.textContent = "not focusable";
+                for (const [name, value] of Object.entries(attributes)) {
+                    if (name === "style") button.style.cssText = value;
+                    else button.setAttribute(name, value);
+                }
+                dialog.appendChild(button);
+            }
+            const disabledFieldset = document.createElement("fieldset");
+            disabledFieldset.disabled = true;
+            disabledFieldset.style.cssText = "position:absolute;left:-10000px";
+            const inheritedDisabledButton = document.createElement("button");
+            inheritedDisabledButton.textContent = "disabled by fieldset";
+            disabledFieldset.appendChild(inheritedDisabledButton);
+            dialog.appendChild(disabledFieldset);
+        """)
+
+        options = page.locator("#downloadOptions button")
+        expect(options).to_have_count(3)
+        page.keyboard.press("Tab")
+        expect(options.nth(1)).to_be_focused()
+        page.keyboard.press("Tab")
+        expect(options.nth(2)).to_be_focused()
+        page.keyboard.press("Tab")
+        expect(page.locator("#closeDownloadPicker")).to_be_focused()
+
+        page.keyboard.press("Shift+Tab")
+        expect(options.nth(2)).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(options.nth(1)).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(options.nth(0)).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(page.locator("#closeDownloadPicker")).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(options.nth(2)).to_be_focused()
+
+        page.keyboard.press("Escape")
+        expect(page.locator("#downloadPicker")).to_be_hidden()
+        expect(page.locator("#dlZip")).to_be_focused()
+
+        # Explicit close and backdrop dismissal must also restore the trigger.
+        page.locator("#dlZip").click()
+        page.locator("#closeDownloadPicker").click()
+        expect(page.locator("#downloadPicker")).to_be_hidden()
+        expect(page.locator("#dlZip")).to_be_focused()
+        page.locator("#dlZip").click()
+        page.locator("#downloadBackdrop").click(position={"x": 5, "y": 5})
+        expect(page.locator("#downloadPicker")).to_be_hidden()
+        expect(page.locator("#dlZip")).to_be_focused()
 
         for archive_format in ("jpeg", "tiff", "all"):
             page.locator("#dlZip").click()
