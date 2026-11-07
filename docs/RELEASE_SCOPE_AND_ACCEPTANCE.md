@@ -93,7 +93,7 @@ GitHub Actions run **#42405436400** for PR #63 head commit `cb4c6c73747604f25a49
 ## 6. Environment, dependencies and reproducibility
 
 - Runtime baseline: Python 3.12 in Docker `python:3.12-slim-trixie`; Docker Compose; Linux container. Browser smoke uses Playwright Chromium.
-- Python runtime dependencies are version-constrained in `requirements.txt`; no pip lockfile is present. CI installs from that manifest, so fully hash-locked reproducibility is not yet established.
+- Direct runtime dependencies are exactly pinned in `requirements.txt`; `requirements.lock` pins the resolved runtime graph and `requirements-dev.lock` pins the CI/development graph from the passing Python 3.12 Linux CI environment. These locks pin versions but do not yet record artifact hashes; cross-platform wheel resolution can still differ.
 - System packages are installed from Debian Trixie plus Debian Sid for FFmpeg/libplacebo. The Sid repository is not pinned to a snapshot; exact system-package reproducibility is therefore not guaranteed.
 - Photo processing is CPU-only. Video export requires a compatible NVIDIA GPU, driver, NVIDIA Container Toolkit, Vulkan and FFmpeg with the custom LUT option in libplacebo.
 - CI covers real RAW fixtures and Docker/browser smoke, but hosted runners do not prove physical NVIDIA GPU execution.
