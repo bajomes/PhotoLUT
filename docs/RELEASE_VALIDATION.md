@@ -60,7 +60,7 @@ A green hosted CI run proves only the checks executed by that workflow. It does 
 
 ## Security and memory review
 
-- [x] Uploads are streamed in 1 MiB chunks and checked against per-file and total request limits; output paths are constrained to the job output directory; subprocesses are invoked with argument arrays rather than shell interpolation; temporary output is cleaned on errors and cancellation paths are covered by tests.
+- [x] Uploads are streamed in 1 MiB chunks and checked against per-file and total request limits; photo/preview processing slots are acquired before writing uploads, preventing unlimited concurrent upload staging when workers are busy; output paths are constrained to the job output directory; subprocesses are invoked with argument arrays rather than shell interpolation; temporary output is cleaned on errors and cancellation paths are covered by tests.
 - [x] Heavy RAW processing defaults to one active job (configurable up to two); LUT interpolation and image quantization use bounded tiles/row chunks; prior full-resolution buffers are released before the next RAW file is decoded.
 - [ ] Record a peak-RSS stress run using the largest supported RAW dimensions and an 8 MP Ultra HDR TIFF, including concurrent upload pressure. The code-level review does not replace measurement on the deployment host.
 - [ ] Complete the current-head dependency vulnerability audit and review any advisories before release.
