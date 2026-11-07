@@ -194,6 +194,7 @@ jobs:
           PY
           node --check /tmp/photolut-inline.js
           python tests/browser_export_smoke.py
+          python tests/browser_video_smoke.py
           python tests/browser_smoke.py
           curl --fail --silent http://127.0.0.1:8000/openapi.json |
             python -c 'import json, sys; schema=json.load(sys.stdin); assert "delete" in schema["paths"]["/api/jobs/{job_id}/outputs/{output_id}"]'
