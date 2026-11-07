@@ -102,6 +102,7 @@ Automated tests cover LUT parsing, interpolation, malformed LUT rejection, uploa
 ## Release engineering records
 
 - [PhotoLUT 1.1.0 release scope and acceptance matrix](docs/RELEASE_SCOPE_AND_ACCEPTANCE.md)
+- [Current acceptance evidence ledger](docs/ACCEPTANCE_EVIDENCE_LEDGER.md)
 - [Architecture and risk audit](docs/ARCHITECTURE_RISK_AUDIT.md)
 - [Feature-parity contract draft (Gate B; product decision pending)](docs/FEATURE_PARITY_CONTRACT_DRAFT.md)
 
