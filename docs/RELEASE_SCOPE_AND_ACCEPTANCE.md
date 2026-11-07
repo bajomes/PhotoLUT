@@ -16,6 +16,9 @@
 | Export JPEG and 16-bit TIFF; download either or both as ZIP | **Required** | Existing advertised output formats. RGB output with embedded sRGB ICC profile. |
 | Remove an individual completed result | **Required** | Existing UI capability; must remain safe during concurrent downloads. |
 | Loading/progress and actionable errors | **Required** | Existing asynchronous batch job model; API validation, processing status and failure state must be visible. |
+| Temporary-result retention warning | **Required** | Job outputs expire 30 minutes after completion and are not restored after container recreation; the UI must warn before users lose access. |
+| Cooperative cancellation of an active batch | **Optional** | No cancel endpoint exists. A safe implementation would only cancel between RAW files; interrupting an active LibRaw decode/export worker is not supported by the current thread model. |
+| Persistent project/session recovery | **Out of release** | PhotoLUT is a temporary batch processor, not a project/catalog manager. Users must download finished outputs; no recovery after container recreation is promised. |
 | Undo/redo history | **Out of release** | There is no edit stack or non-destructive project document. Adding history would require a broader editing model, not a safe small release fix. |
 | Exposure, contrast, white balance, highlights/shadows, saturation, curves | **Out of release** | Not part of the current LUT-only editing model; would materially expand color pipeline and validation scope. |
 | Crop and arbitrary rotate tools | **Out of release** | RAW orientation is normalized by the decoder/export path; user-controlled geometry editing is not implemented. |
@@ -59,11 +62,12 @@ Status vocabulary is strict: **LULUS** means executed and passed; **GAGAL** mean
 | COL-02 | TIFF export from deterministic RGB float fixture | uint16 RGB samples exactly equal `rint(pixel × 65535)`; embedded sRGB ICC present | `tests/test_raw_integration.py`; **LULUS** in CI run #42405436400 using the pinned Nikon NEF ×2 and Canon CR2 fixtures |
 | COL-03 | JPEG export from deterministic RGB fixture | RGB mode, quality 95, embedded sRGB ICC; lossy pixel equality is not asserted | `tests/test_raw_integration.py`; **LULUS** in CI run #42405436400 |
 | COL-04 | RAW alpha / TIFF alpha input | Not applicable; RGB-only input/output contract. No alpha preservation claim | Scope contract; **LULUS** as an explicit exclusion |
-| PRE-01 | Preview and final export of same RAW/LUT | Same LUT/domain/intensity semantics; no pixel-identical requirement because preview uses half-size decode, 8-bit quantization and JPEG proxy. Compare UI preview against export visually on calibrated display as a separate manual check | `tests/browser_export_smoke.py` black/white 1-pixel fixture verifies 0/50/100% intensity and 50% = sRGB 188; calibrated-display manual comparison **BELUM DIJALANKAN** |
-| UI-01 | Open format picker, Tab/Shift+Tab, wrap, Escape, close, backdrop, keyboard focus recovery | Focus remains in dialog; choices are traversed before close control; focus returns to trigger on close | `tests/browser_export_smoke.py`; **LULUS** in CI run #42405436400 on commit `cb4c6c73747604f25a496fe9c88767d53a308e53` |
+| PRE-01 | Preview and final export of same RAW/LUT | Same LUT/domain/intensity semantics; no pixel-identical requirement because preview uses half-size decode, 8-bit quantization and JPEG proxy. Compare UI preview against export visually on calibrated display as a separate manual check | `tests/browser_export_smoke.py` black/white 1-pixel fixture verifies 0/50/100% intensity and 50% = sRGB 188; **LULUS** in CI run #42406297351; calibrated-display manual comparison **BELUM DIJALANKAN** |
+| UI-01 | Open format picker, Tab/Shift+Tab, wrap, Escape, close, backdrop, keyboard focus recovery | Focus remains in dialog; choices are traversed before close control; focus returns to trigger on close | `tests/browser_export_smoke.py`; PR #63 passed at `cb4c6c73747604f25a496fe9c88767d53a308e53`; integrated regression on latest PR #64 head **BELUM DIJALANKAN** |
 | UI-02 | Select JPEG, TIFF, all; remove result; download during remove | Correct archive content; deletion cannot corrupt an in-flight response | `tests/browser_export_smoke.py`, `tests/test_file_response_leases.py`; **LULUS** in CI run #42405436400 |
 | JOB-01 | Multi-file batch, progress and processing failure | Per-file progress and terminal done/failed state; previous image buffers released before next decode | `tests/test_processing_memory.py`, `tests/test_app.py`; **LULUS** in CI run #42405436400 |
 | JOB-02 | Concurrent request over capacity and job cleanup | HTTP 429 when slots full; expired/orphaned files cleaned without deleting leased output | `tests/test_jobs.py`, `tests/test_job_cleanup_locks.py`; **LULUS** in CI run #42405436400 |
+| RET-01 | Completed job and user opens results view | UI states 30-minute expiry and container-recreation loss; cleanup respects active output leases | `tests/browser_export_smoke.py`, `tests/test_jobs.py`; **BELUM DIJALANKAN** on latest PR #64 head |
 | BUILD-01 | Clean Docker build and app startup as non-root | Docker image builds; container serves UI and OpenAPI; no root runtime | `.github/workflows/tests.yml`; Docker build, non-root startup, browser/API smoke **LULUS** in CI run #42405436400 |
 | RAW-01 | Pinned Nikon NEF ×2 and Canon 5D Mark IV CR2 fixtures with ExifTool | RAW decode finite sRGB; identity/creative LUT; TIFF/JPEG, ICC, orientation and camera metadata verified | `tests/test_raw_integration.py`; **LULUS** in CI run #42405436400 |
 | PERF-01 | 2400×3200 float32 RGB synthetic image, 17³ LUT, 256-pixel tiles | Peak RSS < 6× source image byte size in fresh Linux subprocess | `tests/test_memory_footprint.py`; **LULUS** in CI run #42405436400 |
@@ -84,11 +88,12 @@ Status vocabulary is strict: **LULUS** means executed and passed; **GAGAL** mean
 
 ## 5. Execution snapshot
 
-GitHub Actions run **#42405436400** for PR #63 head commit `cb4c6c73747604f25a496fe9c88767d53a308e53` completed successfully:
+GitHub Actions run **#42406297351** for PR #64 head commit `f872a5dbe005e52ed59dc108371d7cc5db38895e` completed successfully:
 - Python/integration job: **122 passed, 1 skipped, 0 failed** in 81.59 seconds.
-- Docker/UI/API/Playwright smoke job: **success**.
+- Docker/UI/API/Playwright smoke job: **success**, including the 0%/50%/100% linear-light preview pixel assertions.
+- Both CPU and NVIDIA Compose configurations passed `docker compose config --quiet`; locked dependencies installed and `pip check` passed.
 - The one skipped test is the physical GPU video integration because the hosted runner's FFmpeg lacks the custom `.cube` option in libplacebo. This is a hardware/toolchain limitation, not a pass.
-- This run validates the application code and PR #63 changes against the `main` base. It does not yet validate the separate PR #64 Compose overlay and release-document commits; those have their own CI run in progress.
+- This run validates the preview implementation, dependency locks, Compose split, Docker image and application code on PR #64 before the subsequent retention/focus-trap integration commits. Those later commits require a fresh CI run.
 
 ## 6. Environment, dependencies and reproducibility
 
