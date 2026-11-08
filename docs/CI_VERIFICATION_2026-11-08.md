@@ -94,3 +94,17 @@ The user synchronized the branch with `git fetch origin` and `git pull --ff-only
 This is the first supplied evidence of the real local GPU integration test completing without skips. It supersedes the previous statement that VID-01 was blocked solely for lack of physical NVIDIA hardware on the target workstation. It does not establish hosted CI status for this commit or validate arbitrary source files and long-duration workloads.
 
 The full project test suite has not yet been rerun after this patch. Gate A remains open for PERF-02, calibrated-display review, hash-verified Python dependencies, immutable Docker/base-system sources, and the full dependency license inventory. PR #64 remains draft and unmerged.
+
+
+## Follow-up — local full-suite regression on candidate 94a98f9
+
+User-supplied execution on the synchronized `release/1.1.0-scope-and-acceptance` branch:
+
+- Python compileall: exit 0.
+- Full suite: **121 passed, 3 skipped, 0 failed in 9.68 s**.
+- The three skips are missing local RAW fixture files (two Nikon NEF and one Canon CR2). CI downloads these fixtures separately; the local skips are not failures.
+- The earlier three failures in `tests/test_video.py` were stale expectations for the old external Vulkan/hwupload graph. Commit `94a98f9` updated only those tests to match the production libplacebo-managed Vulkan context. Production `video.py` was not changed by this commit.
+
+GitHub Actions run [#42460363433](https://github.com/bajomes/PhotoLUT/actions/runs/42460363433) was still in progress at the time of this note. The Python job had completed checkout, dependency installation, fixture download and compilation and was running pytest. The Docker job had validated both Compose configurations and built both image targets; Playwright/browser smoke was still running. No CI pass is claimed until the run concludes.
+
+The local regression is green, but Gate A remains open for the 24 MP reference-host benchmark, calibrated-display review, hash-verified dependency artifacts, immutable Docker/base-system inputs and complete direct/transitive dependency license inventory.
