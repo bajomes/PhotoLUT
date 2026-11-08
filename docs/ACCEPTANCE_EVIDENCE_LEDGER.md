@@ -129,3 +129,18 @@ The target workstation successfully ran the production GPU integration tests aft
 - The production integration test covers both HLG and Rec.709 export profiles. This is local hardware evidence, not hosted CI evidence.
 
 VID-01 is now **LULUS on the reported local NVIDIA workstation for the tested synthetic source and identity LUT**. This does not certify every camera/container/input variation or long-duration throughput. Hosted CI status for the new source commit must be checked separately. Gate A photo release blockers (PERF-02, calibrated-display review, dependency hashes, immutable Docker/system package sources, and full dependency license inventory) remain open.
+
+
+## Evidence update — full local regression after managed-libplacebo test alignment
+
+Candidate branch commit: `94a98f9e4e0652ee30007ccdea99869157d05a34`.
+
+The user synchronized the branch and executed:
+
+- `python -m compileall -q app.py core.py jobs.py video.py scripts tests`: exit 0.
+- `python -m pytest -q -rs`: **121 passed, 3 skipped, 0 failed in 9.68 s**.
+- The three skips are the Nikon NEF ×2 and Canon CR2 integration cases because those fixture files are not present in the user's local checkout. The CI workflow downloads these fixtures and verifies the Canon fixture checksum.
+- The three previously failing `tests/test_video.py` assertions were stale expectations for externally initialized Vulkan and upload/download filter placement. The test-only update now asserts the managed-libplacebo graph used by the production implementation. No production code changed in commit `94a98f9`.
+- GitHub Actions run [#42460363433](https://github.com/bajomes/PhotoLUT/actions/runs/42460363433) was observed in progress after checkout, dependency installation, fixture download, compilation and Docker image builds. Its final result is not yet established in this evidence entry.
+
+This closes the current local automated regression failure. It does **not** close PERF-02, calibrated-display review, dependency artifact hashes, immutable Docker/base-system sources, or DOC-01 dependency-license inventory. Gate A remains open pending those acceptance items and successful completion of the current hosted CI run.
