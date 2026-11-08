@@ -2,9 +2,9 @@
 
 Date: 2026-11-08  
 Candidate branch: `release/1.1.0-scope-and-acceptance`  
-Verified branch HEAD: `89107d01730ff0e386c7254803f30d1ad240ef85`  
+Verified branch HEAD at prior evidence snapshot: `89107d01730ff0e386c7254803f30d1ad240ef85`  
 Application-source candidate: `d3ce6c81c28fc7e909515733cfc5cf28c7212aa2`  
-Latest CI run: [#42451056317](https://github.com/bajomes/PhotoLUT/actions/runs/42451056317)
+Latest CI run: [#42452630508](https://github.com/bajomes/PhotoLUT/actions/runs/42452630508)
 
 ## Latest hosted CI result
 
