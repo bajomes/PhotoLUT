@@ -92,3 +92,14 @@ Latest workflow run [#42451056317](https://github.com/bajomes/PhotoLUT/actions/r
 The following remain open: **PERF-02 TERHAMBAT** (three 24 MP runs on the declared 8-core/32-GB/NVMe reference host), calibrated-display review **BELUM DIJALANKAN**, hash-verified Python dependencies **GAGAL**, immutable Docker base/system package snapshot **GAGAL**, full dependency license inventory **BELUM DIJALANKAN**, physical NVIDIA video integration **TERHAMBAT**. See the updated `docs/CI_VERIFICATION_2026-11-08.md`.
 
 **Gate A remains NOT READY for user acceptance.** PR #64 remains draft and unmerged.
+
+
+## Evidence update — CI run #42452630508 (2026-11-08)
+
+This run was triggered after the documentation updates and completed successfully on GitHub-hosted Ubuntu 24.04 / Python 3.12.16.
+
+- Python job [128644952110](https://github.com/bajomes/PhotoLUT/actions/runs/42452630508): **122 passed, 1 skipped, 0 failed in 69.98 s**. The log confirms dependency installation, `pip check`, download of two Nikon NEF fixtures and one Canon 5D Mark IV CR2 fixture (Canon SHA-256 verified), `python -m compileall -q app.py core.py jobs.py video.py scripts tests`, and `pytest -q -rs`. The one skip remains `tests/test_video_integration.py:79` because the hosted runner FFmpeg lacks libplacebo custom `.cube` LUT support.
+- Docker/UI job [128644952315](https://github.com/bajomes/PhotoLUT/actions/runs/42452630508): **LULUS**. CPU/NVIDIA Compose validation, separate photo/video image builds, photo-image FFmpeg exclusion and app import, Playwright browser installation, non-root video container startup, UI/API/OpenAPI smoke, inline JavaScript syntax check and browser export smoke completed.
+- This confirms hosted CI for the candidate source. It does not close physical NVIDIA GPU integration, target-host 24 MP performance, calibrated-display review, hash-locked dependency installation, immutable OS/base-image rebuild, or the complete dependency license inventory.
+
+**Updated release gate: Gate A remains NOT READY for user acceptance.** No application-source change is included in this evidence update. PR #64 remains draft and unmerged.
