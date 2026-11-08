@@ -85,18 +85,22 @@ ExifTool is installed in the Docker image. PhotoLUT attempts to copy camera meta
 
 ## Development and tests
 
-Use Python 3.12 for local development:
+Use Python 3.12 to match the CI environment. Create an isolated virtual environment and install the development lockfile (which includes pytest):
 
 ```bash
-python -m venv .venv
+python3.12 --version
+python3.12 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements-dev.lock
-pytest -q
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.lock
+python -m pip check
+python -m compileall -q app.py core.py jobs.py video.py scripts tests
+python -m pytest -q -rs
 ```
 
-On Windows PowerShell, activate the environment with `.venv\\Scripts\\Activate.ps1`.
+Use `python -m pytest` rather than relying on a standalone `pytest` executable being present on `PATH`. If Python 3.12 is not installed, install it before creating the environment; the CI baseline is Python 3.12, not the host's default Python version. On Windows PowerShell, use the Python 3.12 launcher to create the environment (for example, `py -3.12 -m venv .venv`) and activate it with `.venv\\Scripts\\Activate.ps1`.
 
-Automated tests cover LUT parsing, interpolation, malformed LUT rejection, upload validation and limits, API processing and export, output profiles, metadata behavior, and job cleanup. Real-RAW CI fixtures currently cover Nikon NEF and Canon CR2; other camera models still need representative validation.
+Automated tests cover LUT parsing, interpolation, malformed LUT rejection, upload validation and limits, API processing and export, output profiles, metadata behavior, and job cleanup. Real-RAW CI fixtures currently cover Nikon NEF and Canon CR2; other camera models still need representative validation. The three RAW integration fixtures must be downloaded separately to run those cases locally; without them, the integration tests are skipped.
 
 ## Release engineering records
 
