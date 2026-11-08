@@ -51,3 +51,19 @@ The documentation commit `2a9eb77ee22cb8328b71030f1bcd6a1765e281f2` was verified
 The pull-request Python job log records **122 passed, 1 skipped, 0 failed in 72.88 s** on GitHub-hosted Ubuntu 24.04 / Python 3.12.16. The skipped test remains `tests/test_video_integration.py:79`, because the runner FFmpeg build lacks the GPU/libplacebo custom `.cube` LUT option. The job also completed locked dependency installation, `pip check`, fixture download and checksum, and `compileall`. The Docker job passed Compose validation for CPU and NVIDIA configurations, image build, Playwright browser installation, container startup, non-root check, and UI/API smoke.
 
 This confirms CI for candidate HEAD `2a9eb77...`; it does not close physical GPU validation, reference-host performance, calibrated-display review, full dependency license inventory, or hermetic system-image reproducibility. These remain respectively **TERHAMBAT**, **TERHAMBAT**, **BELUM DIJALANKAN**, **BELUM DIJALANKAN**, and **BELUM DIJALANKAN**.
+
+
+## Current candidate verification — source HEAD d3ce6c8
+
+The latest source candidate is `d3ce6c81c28fc7e909515733cfc5cf28c7212aa2`. Both workflows completed successfully:
+
+| Run | Event | Python/integration job | Docker/UI/API smoke job | Overall |
+|---|---|---|---|---|
+| [#42450261576](https://github.com/bajomes/PhotoLUT/actions/runs/42450261576) | push | success — 122 passed, 1 skipped, 0 failed (70.77 s) | success | **LULUS** |
+| [#42450265261](https://github.com/bajomes/PhotoLUT/actions/runs/42450265261) | pull_request | success — 122 passed, 1 skipped, 0 failed (57.67 s) | success | **LULUS** |
+
+Both Docker jobs passed CPU and NVIDIA Compose validation, built the separate `photo` and `video` targets, verified the photo image has no FFmpeg and can import the application, started the video-capable image, checked non-root execution, and passed UI/API plus Playwright browser export smoke. Logs: PR jobs `128637801705` (`docker-smoke`) and `128637801918` (`test`); push jobs `128638631994` and `128638632103` respectively.
+
+The Python job skipped `tests/test_video_integration.py:79` because hosted-runner FFmpeg lacks the required libplacebo custom `.cube` LUT option. This does not validate actual NVDEC/Vulkan/NVENC execution on a physical NVIDIA GPU. The two Docker targets are now verified as build/runtime-smoke targets; hardware video acceptance remains **TERHAMBAT**.
+
+The following release gates remain open: reproducible system/Python dependency artifacts (hash-verified locks, immutable base digest, Debian snapshot), three 24 MP benchmark runs on the declared reference host, calibrated-display review, full direct/transitive dependency license inventory and final handoff review. Gate A remains **NOT READY** until all required gates are closed.

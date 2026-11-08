@@ -1,8 +1,8 @@
 # PhotoLUT 1.1.0 — Current Acceptance Evidence Ledger
 
 **Candidate branch:** `release/1.1.0-scope-and-acceptance`  
-**Evidence commit:** `e25e87b7e0769703e60a24e43c91c2a0983f2b6e`  
-**CI run:** [#42407685107](https://github.com/bajomes/PhotoLUT/actions/runs/42407685107)  
+**Source candidate commit:** `d3ce6c81c28fc7e909515733cfc5cf28c7212aa2`  
+**Current CI evidence:** [PR #42450265261](https://github.com/bajomes/PhotoLUT/actions/runs/42450265261) and [push #42450261576](https://github.com/bajomes/PhotoLUT/actions/runs/42450261576)  
 **Run environment:** GitHub-hosted Ubuntu 24.04 runner; Python 3.12.16; Docker Engine/Compose; Playwright Chromium.  
 **Status vocabulary:** LULUS / GAGAL / BELUM DIJALANKAN / TERHAMBAT. A skipped hardware-dependent test is never counted as LULUS.
 
@@ -22,7 +22,7 @@ This ledger records the evidence available for the exact candidate commit above.
 
 ## Acceptance records
 
-The automated test suite below ran on the exact candidate commit unless a row explicitly identifies an additional manual or hardware prerequisite.
+The current automated test suite below ran on source candidate `d3ce6c81c28fc7e909515733cfc5cf28c7212aa2` in both push and pull-request workflows. The documentation-only follow-up commit does not change application source; CI evidence is tied to the source candidate SHA above.
 
 | ID | Scenario and input | Environment | Expected result / predeclared tolerance | Actual result | Evidence / status |
 |---|---|---|---|---|---|
@@ -42,8 +42,8 @@ The automated test suite below ran on the exact candidate commit unless a row ex
 | JOB-02 | Concurrency limit and expired/orphan cleanup with active output lease | Same CI Python environment | Over-capacity returns HTTP 429; cleanup does not remove leased output | Test suite passed | `tests/test_jobs.py`, `tests/test_job_cleanup_locks.py`; **LULUS** |
 | RET-01 | Completed result retention warning and cleanup behavior | Docker/Playwright and Python CI | Warn of 30-minute expiry and container-recreation loss; cleanup respects leases | UI warning in browser smoke; cleanup regression in Python suite | `tests/browser_export_smoke.py`, `tests/test_job_cleanup_locks.py`; **LULUS** |
 | BUILD-01 | Clean Docker image build and startup as non-root (previous single-image architecture) | GitHub-hosted Ubuntu 24.04 Docker runner | Image builds; app serves UI/OpenAPI; runtime UID is non-zero | Previous image build, startup, non-root, UI/API smoke passed | `.github/workflows/tests.yml`, run #42407685107 job `docker-smoke`; **LULUS** for previous image architecture only |
-| BUILD-02 | Build CPU photo target without FFmpeg and import the application | GitHub-hosted Ubuntu 24.04 Docker runner | `docker build --target photo`; image contains no `ffmpeg`; `import app` succeeds | New target and check added to workflow; execution pending | `.github/workflows/tests.yml`; **BELUM DIJALANKAN** |
-| BUILD-03 | Build optional video target and smoke-test UI/API plus libplacebo custom LUT support | GitHub-hosted Ubuntu 24.04 Docker runner | `docker build --target video`; FFmpeg exposes libplacebo custom `.cube` LUT; non-root app serves UI/OpenAPI | New target and smoke path added to workflow; execution pending | `.github/workflows/tests.yml`; **BELUM DIJALANKAN** |
+| BUILD-02 | Build CPU photo target without FFmpeg and import the application | GitHub-hosted Ubuntu 24.04 Docker runner | `docker build --target photo`; image contains no `ffmpeg`; `import app` succeeds | Build and runtime assertion both completed successfully on source candidate SHA | Run #42450265261 job `docker-smoke`, step 5; **LULUS** |
+| BUILD-03 | Build optional video target and smoke-test UI/API plus libplacebo custom LUT support | GitHub-hosted Ubuntu 24.04 Docker runner | `docker build --target video`; FFmpeg exposes libplacebo custom `.cube` LUT; non-root app serves UI/OpenAPI | Video image build, FFmpeg/libplacebo option checks, non-root startup, UI/API and browser export smoke all completed successfully. This does not execute GPU video processing on physical NVIDIA hardware. | Run #42450265261 job `docker-smoke`, steps 4 and 7–9; **LULUS** for image/build/smoke scope; VID-01 remains **TERHAMBAT** |
 | RAW-01 | Decode two Nikon NEF and one Canon 5D Mark IV CR2; apply LUT and export | Python 3.12 CI; downloaded fixtures; Canon SHA-256 checked | Finite rendered sRGB; TIFF/JPEG, ICC, orientation and selected camera metadata validated | Integration suite passed | `tests/test_raw_integration.py`; **LULUS** for these three fixtures only |
 | PERF-01 | Synthetic 2400×3200 float32 RGB image and 17³ LUT, tiled processing | Linux CI subprocess | Peak RSS < 6× source image byte size | Test suite passed | `tests/test_memory_footprint.py`; **LULUS** |
 | PERF-02 | 24 MP RAW, single worker, reference 8 physical cores / 32 GB RAM / NVMe; three fresh-process runs | Target reference host unavailable | ≤120 s/photo and ≤4 GiB process peak RSS; report median and maximum | No valid reference-host measurements collected | `scripts/benchmark_photo.py`; **TERHAMBAT** |
@@ -57,6 +57,15 @@ The automated test suite below ran on the exact candidate commit unless a row ex
 - **Di luar rilis 1.1.0:** undo/redo, persistent project recovery, exposure/contrast/WB/highlights/shadows/saturation/curves, crop/rotate editing, alpha workflow, camera-Log and HDR/wide-gamut still grading, video timeline/audio/general NLE functionality.
 - Lightroom, Snapseed, DaVinci Resolve and Kdenlive are workflow-quality references only. The current release does not claim full-product parity.
 
+## Current CI update — source candidate d3ce6c8
+
+Both latest workflows for source candidate `d3ce6c81c28fc7e909515733cfc5cf28c7212aa2` completed successfully:
+
+- PR run [#42450265261](https://github.com/bajomes/PhotoLUT/actions/runs/42450265261): Python/integration **122 passed, 1 skipped, 0 failed** in 57.67 s; Docker/UI/API job success.
+- Push run [#42450261576](https://github.com/bajomes/PhotoLUT/actions/runs/42450261576): Python/integration **122 passed, 1 skipped, 0 failed** in 70.77 s; Docker/UI/API job success.
+- Both Docker jobs validated CPU/NVIDIA Compose configurations, built `photo` and `video` targets, verified `photo` contains no FFmpeg and imports `app`, started the video-capable container as non-root, and passed UI/API plus Playwright browser export smoke.
+- The skipped test is `tests/test_video_integration.py:79`, because the hosted runner lacks FFmpeg libplacebo custom `.cube` LUT support for the GPU integration. It is not a pass.
+
 ## Reproducibility and handoff limitations
 
 The Python lockfiles pin versions but do not contain artifact hashes. The Docker base image tag is mutable, and FFmpeg is installed from Debian Sid without a repository snapshot. A successful Docker build therefore demonstrates a successful build at the time of the run, not a hermetic or bit-for-bit reproducible build. The project MIT license is present; a complete dependency/transitive-license inventory remains outstanding.
@@ -65,7 +74,7 @@ The application job registry and processing slots are process-local. The support
 
 ## Release gate
 
-**Gate A (PhotoLUT 1.1.0): NOT READY for user acceptance yet.** Core automated tests and Docker/browser smoke pass, but the declared reference-host performance target, calibrated-display review, final documentation/license audit and reproducibility work are not closed.
+**Gate A (PhotoLUT 1.1.0): NOT READY for user acceptance yet.** Core automated tests and both new Docker targets plus browser smoke pass on GitHub-hosted Ubuntu 24.04. The declared reference-host performance target, calibrated-display review, final documentation/license audit and reproducibility work are not closed.
 
 **Gate B (comparator parity): NOT CONTRACTED.** No comparator versions/platforms/workflow subsets have been selected as mandatory parity requirements. The matrix in `FEATURE_PARITY_CONTRACT_DRAFT.md` remains a planning record, not evidence of parity.
 
