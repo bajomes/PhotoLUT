@@ -1,6 +1,8 @@
 services:
     lutphoto:
-        build: .
+        build:
+            context: .
+            target: photo
         environment:
             PHOTOLUT_CONCURRENCY: "${PHOTOLUT_CONCURRENCY:-1}"
         ports:
