@@ -202,3 +202,17 @@ GitHub Actions run [#42463023428](https://github.com/bajomes/PhotoLUT/actions/ru
 The three local benchmark runs on the supplied 4080×3072 (12.53 MP) DNG are **LULUS for that measured workload**: median total time 4.9646 s, maximum 5.0184 s, and maximum peak RSS 473.35 MiB. The original 24 MP / 8-core / 32-GB / NVMe target is retained as a non-blocking capacity profile. It is not a universal correctness requirement, and the 12.53 MP results are not extrapolated to 24 MP.
 
 Remaining release hardening items are tracked separately: calibrated-display visual review, artifact-hash-verified Python dependency installation, immutable Docker base digest and snapshot-pinned OS packages, and a complete direct/transitive dependency license inventory. These are not represented as completed by the benchmark or CI run above.
+
+
+## Latest candidate verification — 2026-11-08, commit 934ec56
+
+Candidate branch head: `934ec567d68c99aff7d7193f1ab5845b29209e3a`.
+
+- Hosted CI run [#42463321752](https://github.com/bajomes/PhotoLUT/actions/runs/42463321752): overall **success**. Python job: **122 passed, 2 skipped, 0 failed** in 80.38 s. Docker/UI job: **success**, including CPU/NVIDIA Compose validation, separate photo/video image builds, photo image FFmpeg exclusion/import check, non-root container startup, and web UI/API schema smoke. The two hosted skips are physical GPU video integration cases; see the local RTX 3050 evidence above.
+- User local verification on the same head: `pip check` passed; `compileall` passed; full suite **121 passed, 3 skipped, 0 failed** in 10.04 s; benchmark CLI help passed; Docker Compose config passed.
+- The three local skips are the two Nikon NEF and one Canon CR2 integration fixture cases absent from the local checkout; the CI workflow separately downloads the fixtures.
+- Local working tree clean after synchronization. The existing `.venv312/` and `photolut-diagnostic.txt` were preserved and added only to local `.git/info/exclude`, not repository ignore rules.
+
+This current snapshot supersedes earlier statements that the latest hosted CI was cancelled or that the representative 12.53 MP PERF-02 workload remained unmeasured. The 12.53 MP sample is accepted only for its measured workload; no 24 MP extrapolation is claimed.
+
+Remaining Gate A hardening evidence: calibrated-display preview/export review; artifact-hash-verified Python dependency installation; immutable Docker base-image digest and snapshot-pinned OS packages; complete direct/transitive dependency license inventory. PR #64 remains draft and unmerged.
