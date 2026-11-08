@@ -68,3 +68,13 @@ The exact Python job log confirms **122 passed, 1 skipped, 0 failed in 69.98 s**
 Docker/UI job completed successfully: Compose CPU/NVIDIA validation; photo and video builds; FFmpeg exclusion from photo image; app import; non-root video container; UI/API/OpenAPI smoke; inline JS syntax; browser export smoke. Browser smoke uses mocked API responses and does not establish real RAW/LUT or physical GPU fidelity.
 
 Gate A remains **BELUM SIAP** pending PERF-02 reference-host benchmark, calibrated-display visual review, hash-verified Python dependencies, immutable base/system package snapshot, and full direct/transitive license inventory. PR #64 remains draft and unmerged.
+
+
+## GPU runtime preflight follow-up — run #42458206012
+
+Commit: [ce52ea6](https://github.com/bajomes/PhotoLUT/commit/ce52ea6772eca73e00fde6b6c1f7f38817cd3f29). The test-only preflight now initializes CUDA and NVIDIA Vulkan and attempts a one-frame HEVC Main 10 NVENC encode after checking FFmpeg build features. Missing runtime hardware is skipped as TERHAMBAT; failures after a successful preflight remain failures.
+
+- Python job [128661639929](https://github.com/bajomes/PhotoLUT/actions/runs/42458206012): 122 passed, 1 skipped, 0 failed in 73.93 s on Ubuntu 24.04 / Python 3.12.16. Skip: tests/test_video_integration.py:107, hosted FFmpeg lacks libplacebo custom .cube LUT support.
+- Docker/UI job [128661639869](https://github.com/bajomes/PhotoLUT/actions/runs/42458206012): LULUS; Compose checks, both image builds, non-root startup and UI/API smoke passed.
+
+The optional physical GPU pipeline was not executed. Gate A remains BELUM SIAP pending PERF-02, calibrated visual review, hash-verified Python dependencies, immutable base/system package snapshot and full dependency license inventory. PR #64 remains draft and unmerged.
