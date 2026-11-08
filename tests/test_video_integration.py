@@ -72,7 +72,7 @@ def _gpu_video_stack_skip_reason() -> str | None:
                 "-init_hw_device", "cuda=cu:0",
                 "-init_hw_device", "vulkan=vk:NVIDIA",
                 "-filter_hw_device", "vk",
-                "-f", "lavfi", "-i", "color=c=black:s=64x64:r=1,format=p010le",
+                "-f", "lavfi", "-i", "color=c=black:s=256x256:r=1,format=p010le",
                 "-frames:v", "1", "-c:v", "hevc_nvenc",
                 "-profile:v", "main10", "-pix_fmt", "p010le",
                 "-f", "null", "-",
@@ -131,7 +131,7 @@ def test_synthetic_hlg_video_exports_hlg_and_rec709_10bit_mp4(tmp_path: Path):
 
     _run([
         ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-        "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=2:duration=1",
+        "-f", "lavfi", "-i", "testsrc2=size=256x256:rate=2:duration=1",
         "-f", "lavfi", "-i", "sine=frequency=1000:sample_rate=48000:duration=1",
         "-shortest",
         "-vf",
