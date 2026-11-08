@@ -44,6 +44,10 @@ jobs:
           echo "02b23f9cc6dc4c99fb39aa4d1f65ac227804d06461ac1bd0f842aa2f3beb8fe4  test-data/Canon-5D-Mark-IV.CR2" | sha256sum -c -
       - name: Compile Python sources and benchmark utility
         run: python -m compileall -q app.py core.py jobs.py video.py scripts tests
+      - name: Verify benchmark CLI imports outside repository root
+        run: |
+          cd /tmp
+          python "$GITHUB_WORKSPACE/scripts/benchmark_photo.py" --help
       - name: Run tests
         env:
           PHOTOLUT_TEST_RAW_DIR: test-data
