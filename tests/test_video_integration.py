@@ -11,11 +11,11 @@ import video
 
 
 def _gpu_video_stack_skip_reason() -> str | None:
-    """Skip only when FFmpeg lacks required compiled features.
+    """Skip when FFmpeg features or an NVIDIA runtime device are unavailable.
 
-    If the features are present, the integration test must execute the real
-    CUDA -> Vulkan/libplacebo -> NVENC pipeline. A missing or unusable device
-    is then a test failure, not a skip.
+    Once CUDA, the NVIDIA Vulkan device and NVENC initialize successfully, the
+    integration test must execute the real CUDA -> Vulkan/libplacebo -> NVENC
+    pipeline. Failures after this preflight remain test failures.
     """
     ffmpeg = shutil.which("ffmpeg")
     ffprobe = shutil.which("ffprobe")
@@ -58,6 +58,34 @@ def _gpu_video_stack_skip_reason() -> str | None:
             missing.append("Vulkan hardware device support")
         if missing:
             return "FFmpeg build lacks required GPU features: " + ", ".join(missing)
+
+        # Listing compiled backends is not proof that this host/container has
+        # an accessible NVIDIA driver or device. Initialize each runtime and
+        # perform a one-frame Main 10 NVENC encode before scheduling the
+        # hardware integration test. This keeps CPU-only developer machines
+        # and hosted CI correctly classified as hardware-blocked, while a
+        # failure in the actual LUT filter graph on a usable NVIDIA host still
+        # fails the integration test.
+        runtime_probe = subprocess.run(
+            [
+                ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+                "-init_hw_device", "cuda=cu:0",
+                "-init_hw_device", "vulkan=vk:NVIDIA",
+                "-filter_hw_device", "vk",
+                "-f", "lavfi", "-i", "color=c=black:s=64x64:r=1,format=p010le",
+                "-frames:v", "1", "-c:v", "hevc_nvenc",
+                "-profile:v", "main10", "-pix_fmt", "p010le",
+                "-f", "null", "-",
+            ],
+            check=False, capture_output=True, text=True, timeout=30,
+        )
+        if runtime_probe.returncode:
+            detail = (runtime_probe.stderr or runtime_probe.stdout or "").strip()
+            detail = detail[-800:] if detail else "No FFmpeg diagnostic was returned."
+            return (
+                "NVIDIA CUDA/Vulkan/NVENC runtime is unavailable on this host: "
+                + detail
+            )
         return None
     except (OSError, subprocess.SubprocessError) as exc:
         # A broken or unresponsive FFmpeg probe is not evidence that a build
