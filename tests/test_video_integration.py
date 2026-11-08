@@ -39,12 +39,7 @@ def _gpu_video_stack_skip_reason() -> str | None:
             [ffmpeg, "-hide_banner", "-hwaccels"],
             check=True, capture_output=True, text=True, timeout=15,
         )
-        devices = subprocess.run(
-            [ffmpeg, "-hide_banner", "-init_hw_device", "list"],
-            check=False, capture_output=True, text=True, timeout=15,
-        )
         help_text = help_result.stdout + help_result.stderr
-        device_text = devices.stdout + devices.stderr
         missing = []
         if "hevc_nvenc" not in encoders.stdout + encoders.stderr:
             missing.append("hevc_nvenc")
@@ -54,8 +49,6 @@ def _gpu_video_stack_skip_reason() -> str | None:
             missing.append("libplacebo custom .cube LUT option")
         if not re.search(r"^cuda$", hwaccels.stdout + hwaccels.stderr, re.MULTILINE):
             missing.append("CUDA hwaccel")
-        if not re.search(r"(?:^|[,\s])vulkan(?:$|[,\s])", device_text, re.IGNORECASE):
-            missing.append("Vulkan hardware device support")
         if missing:
             return "FFmpeg build lacks required GPU features: " + ", ".join(missing)
 
@@ -68,7 +61,7 @@ def _gpu_video_stack_skip_reason() -> str | None:
             [
                 ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
                 "-init_hw_device", "cuda=cu:0",
-                 "-f", "lavfi", "-i", "color=c=black:s=256x256:r=1,format=p010le",
+                "-f", "lavfi", "-i", "color=c=black:s=256x256:r=1,format=p010le",
                 "-frames:v", "1", "-c:v", "hevc_nvenc",
                 "-profile:v", "main10", "-pix_fmt", "p010le",
                 "-f", "null", "-",
@@ -79,7 +72,7 @@ def _gpu_video_stack_skip_reason() -> str | None:
             detail = (runtime_probe.stderr or runtime_probe.stdout or "").strip()
             detail = detail[-800:] if detail else "No FFmpeg diagnostic was returned."
             return (
-                "NVIDIA CUDA/Vulkan/NVENC runtime is unavailable on this host: "
+                "NVIDIA CUDA/NVENC runtime is unavailable on this host: "
                 + detail
             )
         return None
