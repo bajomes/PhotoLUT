@@ -79,3 +79,16 @@ The application job registry and processing slots are process-local. The support
 **Gate B (comparator parity): NOT CONTRACTED.** No comparator versions/platforms/workflow subsets have been selected as mandatory parity requirements. The matrix in `FEATURE_PARITY_CONTRACT_DRAFT.md` remains a planning record, not evidence of parity.
 
 No claim that all mandatory release criteria have passed is made by this ledger.
+
+
+## Evidence update — 2026-11-08, branch HEAD 89107d0
+
+Latest workflow run [#42451056317](https://github.com/bajomes/PhotoLUT/actions/runs/42451056317) completed successfully against application source candidate `d3ce6c81c28fc7e909515733cfc5cf28c7212aa2` (the current HEAD `89107d0` is documentation-only).
+
+- Python job `128640176116`: **122 passed, 1 skipped, 0 failed** in 79.78 s on Ubuntu 24.04 / Python 3.12.16. The skipped case is the optional GPU video integration because the runner FFmpeg lacks libplacebo custom `.cube` support.
+- Docker job `128640176289`: **LULUS**. Both `photo` and `video` targets built; photo image FFmpeg exclusion/import check, non-root video container, UI/API/OpenAPI, JavaScript syntax and Playwright browser export smoke passed.
+- Local candidate browser smoke supplied by the user: **LULUS**. Candidate `photolut:ci-video` served on isolated port 8002; temporary test-script copy targeting 8002 exited 0; only the temporary smoke container was stopped. The existing service on port 8000 was left untouched. The test mocks API behavior and is not a RAW/LUT processing test.
+
+The following remain open: **PERF-02 TERHAMBAT** (three 24 MP runs on the declared 8-core/32-GB/NVMe reference host), calibrated-display review **BELUM DIJALANKAN**, hash-verified Python dependencies **GAGAL**, immutable Docker base/system package snapshot **GAGAL**, full dependency license inventory **BELUM DIJALANKAN**, physical NVIDIA video integration **TERHAMBAT**. See the updated `docs/CI_VERIFICATION_2026-11-08.md`.
+
+**Gate A remains NOT READY for user acceptance.** PR #64 remains draft and unmerged.
