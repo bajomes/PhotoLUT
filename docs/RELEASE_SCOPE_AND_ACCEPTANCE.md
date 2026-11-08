@@ -72,7 +72,7 @@ Status vocabulary is strict: **LULUS** means executed and passed; **GAGAL** mean
 | RAW-01 | Pinned Nikon NEF ×2 and Canon 5D Mark IV CR2 fixtures with ExifTool | RAW decode finite sRGB; identity/creative LUT; TIFF/JPEG, ICC, orientation and camera metadata verified | `tests/test_raw_integration.py`; **LULUS** in CI run #42405436400 |
 | PERF-01 | 2400×3200 float32 RGB synthetic image, 17³ LUT, 256-pixel tiles | Peak RSS < 6× source image byte size in fresh Linux subprocess | `tests/test_memory_footprint.py`; **LULUS** in CI run #42405436400 |
 | PERF-02 | 24 MP RAW, reference CPU 8 physical cores / 32 GB RAM / NVMe SSD, single job | Target: ≤120 s per image; process peak RSS ≤4 GiB. Run `python scripts/benchmark_photo.py sample.NEF look.cube` in a fresh process 3 times; report median and max for total time and peak RSS | Benchmark script implemented; **TERHAMBAT** by absence of reference host |
-| VID-01 | Synthetic HLG BT.2020 10-bit source, NVIDIA NVDEC + Vulkan/libplacebo + NVENC | HLG output Main 10/BT.2020/HLG; Rec.709 output Main 10/BT.709; identity-LUT PSNR >30 dB | `tests/test_video_integration.py`; **TERHAMBAT** without supported NVIDIA hardware/driver/container runtime |
+| VID-01 | Synthetic HLG BT.2020 10-bit source, NVIDIA NVDEC + libplacebo-managed Vulkan + NVENC | HLG output Main 10/BT.2020/HLG; Rec.709 output Main 10/BT.709; identity-LUT PSNR >30 dB | `tests/test_video_integration.py`; **LULUS on the user's RTX 3050 workstation** for synthetic source and identity LUT: 2 passed, 0 skipped; see `docs/ACCEPTANCE_EVIDENCE_LEDGER.md`. Arbitrary camera/container inputs and long-duration throughput are not certified. |
 | DOC-01 | Clean checkout setup, feature limits, release notes, license and known limitations | Instructions reproduce the local Docker workflow; MIT license and hardware-dependent limitations are explicit | `README.md`, `CHANGELOG.md`, `LICENSE`; final doc review **BELUM DIJALANKAN** |
 
 ### Numerical quality and performance thresholds
@@ -132,3 +132,8 @@ No third-party implementation has been copied or adapted for this scope baseline
 The photo release is ready for user acceptance only when every **Required** criterion has executed successfully, no unresolved critical/high defect remains, the reference performance target is measured, a clean Docker checkout is reproducible, and the handover artifacts are present. Optional video GPU validation is reported separately and must not be described as passed when hardware was unavailable.
 
 A green unit-test job, successful Docker build, UI screenshot, or code review alone is not sufficient evidence of release readiness.
+
+
+## Evidence update — local full regression, 2026-11-08
+
+The user synchronized candidate commit `94a98f9e4e0652ee30007ccdea99869157d05a34` and reported successful compilation plus **121 passed, 3 skipped, 0 failed in 9.68 seconds**. The three skips are the two Nikon NEF and one Canon CR2 RAW integration tests because the corresponding fixture files are absent from the local checkout; CI downloads these fixtures. The prior CI run `42460363433` was cancelled before pytest completed, so it is not counted as a CI pass. Its Docker job completed Compose validation, both image builds, non-root startup, and UI/API smoke steps before cancellation. The optional GPU video path remains separately verified on the user's NVIDIA RTX 3050 workstation as recorded in the evidence ledger.
