@@ -108,3 +108,17 @@ User-supplied execution on the synchronized `release/1.1.0-scope-and-acceptance`
 GitHub Actions run [#42460363433](https://github.com/bajomes/PhotoLUT/actions/runs/42460363433) was still in progress at the time of this note. The Python job had completed checkout, dependency installation, fixture download and compilation and was running pytest. The Docker job had validated both Compose configurations and built both image targets; Playwright/browser smoke was still running. No CI pass is claimed until the run concludes.
 
 The local regression is green, but Gate A remains open for the 24 MP reference-host benchmark, calibrated-display review, hash-verified dependency artifacts, immutable Docker/base-system inputs and complete direct/transitive dependency license inventory.
+
+
+## Latest candidate CI — run #42463023428
+
+Candidate commit: `aec5bbc59115fb7cbdd1d85eeb8c16712a3723e1`.
+
+- Python/integration job: **122 passed, 2 skipped, 0 failed in 81.00 s**. Both skips are the optional GPU integration cases because the hosted runner FFmpeg lacks libplacebo custom `.cube` LUT support.
+- Docker/UI job: **success**. Compose validation, photo/video image builds, photo image FFmpeg exclusion and import check, non-root video container, UI/API checks and Playwright browser export smoke all passed.
+- This run includes the benchmark script import-path fix. The 12.53 MP benchmark itself was run separately on the user's workstation and is recorded in the acceptance evidence ledger.
+- Physical GPU video integration is separately verified on the user's RTX 3050 workstation (2 passed, 0 skipped in the dedicated test).
+
+The three 12.53 MP benchmark runs completed in 4.9265 s, 4.9646 s and 5.0184 s, with maximum peak RSS 473.35 MiB. This closes the required representative-workload performance measurement for that input. The original 24 MP / 8-core / 32-GB / NVMe profile is retained as a non-blocking capacity objective; no 24 MP result is claimed.
+
+Outstanding release-hardening evidence: calibrated-display visual review; hash-verified Python dependency artifacts; immutable Docker base-image digest and snapshot-pinned OS packages; complete direct/transitive dependency license inventory. These remain explicitly open and are not masked by the successful CI run.
