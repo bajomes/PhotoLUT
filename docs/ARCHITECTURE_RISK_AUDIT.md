@@ -63,7 +63,8 @@ This section records source-level observations; it does not assert an exploitabl
 ## 6. Video deployment boundary
 
 - The default Compose file does not request GPU devices; the GPU overlay adds `gpus: all`.
-- The Dockerfile currently installs FFmpeg from Debian Sid and checks for libplacebo, the custom .cube LUT option, NVENC, CUDA and Vulkan support.
+- The Dockerfile now has two explicit targets: `photo` (default Compose path) installs only LibRaw/ExifTool plus the pinned Python runtime; `video` extends `photo` with FFmpeg from Debian Sid and checks libplacebo, the custom .cube LUT option, NVENC, CUDA and Vulkan. The NVIDIA Compose overlay selects `target: video`; the default Compose file selects `target: photo`.
+- The Python application still imports `video.py` and mounts its routes in both targets. The photo target therefore retains the API surface but has no FFmpeg executable; video inspection/processing must fail with a clear unavailable-runtime response. This behavior is a deliberate compatibility boundary and requires a runtime smoke test, not just an image build.
 - A successful image build or Compose config check only proves those checks/configurations, not actual NVDEC/Vulkan/libplacebo/NVENC execution on a compatible NVIDIA driver and GPU.
 - Existing video processing is a single-source HLG/Rec.709 batch path. It is not a multitrack timeline editor and does not provide audio editing, clip transitions, keyframes, proxies or persistent editing projects.
 - Until hardware-backed validation is recorded, describe video as experimental/hardware-gated or keep it outside the stable photo distribution.
@@ -72,7 +73,7 @@ This section records source-level observations; it does not assert an exploitabl
 
 - **Observed:** Python lockfiles pin package versions but do not contain artifact hashes; installation is not enforced with `--require-hashes`.
 - **Observed:** Docker base image uses the mutable tag `python:3.12-slim-trixie`, not a digest.
-- **Observed:** Docker adds Debian Sid without a snapshot timestamp. The selected system package versions can change over time.
+- **Observed:** the optional `video` Docker target adds Debian Sid without a snapshot timestamp. The selected FFmpeg/system package versions can change over time. The `photo` target no longer needs that Sid repository.
 - **Observed:** GitHub Actions uses Ubuntu hosted runners and installs system tools from the current runner package repositories. The workflow pins GitHub Actions by commit SHA but not all OS packages.
 - **Conclusion:** current CI demonstrates a successful functional build at a point in time, not hermetic or bit-for-bit reproducible builds.
 
@@ -96,7 +97,7 @@ This section records source-level observations; it does not assert an exploitabl
 
 ## 9. Audit limitations
 
-- No local checkout/working-tree inspection or local Docker build was possible through the available GitHub connector session.
+- No local checkout/working-tree inspection or local Docker build was possible through the available GitHub connector session. The two Docker build targets were separated in commit `0ee0d35...`; the corresponding hosted CI verification is pending at the time of this audit update.
 - Hosted GitHub Actions results are inspected separately and cited by exact run/commit.
 - No penetration test, multi-user deployment test, calibrated-display review, reference-host benchmark or physical GPU test was performed.
 - Dependency license inventory has not yet been regenerated from the complete installed graph. The repository's MIT license was inspected; this is not a full third-party license compliance report.
