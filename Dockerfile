@@ -1,17 +1,11 @@
-FROM python:3.12-slim-trixie
+FROM python:3.12-slim-trixie AS photo
 
-RUN echo "deb http://deb.debian.org/debian sid main" > /etc/apt/sources.list.d/sid.list \
-    && apt-get update \
+# The default photo image contains only the native libraries required for RAW
+# decoding and metadata handling. It deliberately has no FFmpeg/Vulkan stack.
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libraw-dev \
         libimage-exiftool-perl \
-        libvulkan1 \
-        ffmpeg/sid \
-    && ffmpeg -hide_banner -filters 2>&1 | grep -q libplacebo \
-    && ffmpeg -hide_banner -h filter=libplacebo 2>&1 | grep -Eq '^[[:space:]]*lut[[:space:]]+<' \
-    && ffmpeg -hide_banner -encoders 2>&1 | grep -q hevc_nvenc \
-    && ffmpeg -hide_banner -hwaccels 2>&1 | grep -q '^cuda$' \
-    && ffmpeg -hide_banner -init_hw_device list 2>&1 | grep -q vulkan \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system photolut && useradd --system --gid photolut --home-dir /app --no-create-home photolut
@@ -31,3 +25,20 @@ USER photolut
 EXPOSE 8000
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+
+
+# Optional video/GPU image. This stage adds the FFmpeg/libplacebo, Vulkan and
+# NVIDIA encoder/runtime tooling required by the separate HLG video workflow.
+FROM photo AS video
+
+USER root
+RUN echo "deb http://deb.debian.org/debian sid main" > /etc/apt/sources.list.d/sid.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends libvulkan1 ffmpeg/sid \
+    && ffmpeg -hide_banner -filters 2>&1 | grep -q libplacebo \
+    && ffmpeg -hide_banner -h filter=libplacebo 2>&1 | grep -Eq '^[[:space:]]*lut[[:space:]]+<' \
+    && ffmpeg -hide_banner -encoders 2>&1 | grep -q hevc_nvenc \
+    && ffmpeg -hide_banner -hwaccels 2>&1 | grep -q '^cuda$' \
+    && ffmpeg -hide_banner -init_hw_device list 2>&1 | grep -q vulkan \
+    && rm -rf /var/lib/apt/lists/*
+USER photolut
