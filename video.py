@@ -417,7 +417,7 @@ def transcode_hlg_video(
         # or a software Vulkan implementation.
         vulkan_device = "NVIDIA"
         command = [
-            ffmpeg, "-hide_banner", "-loglevel", "warning", "-y",
+            ffmpeg, "-hide_banner", "-loglevel", "verbose", "-y",
             "-init_hw_device", f"vulkan=vk:{vulkan_device}",
             "-filter_hw_device", "vk",
             "-hwaccel", "cuda", "-hwaccel_device", "0", "-hwaccel_output_format", "cuda",
@@ -445,7 +445,7 @@ def transcode_hlg_video(
             raise RuntimeError(
                 "GPU-only video export failed. CPU processing was not started. "
                 "NVIDIA Vulkan/CUDA/NVENC diagnostics: "
-                + (detail[-2400:] or "No FFmpeg diagnostic was returned.")
+                + (detail[-6000:] or "No FFmpeg diagnostic was returned.")
             ) from exc
         if not output.is_file() or output.stat().st_size == 0:
             raise RuntimeError("FFmpeg did not produce a valid output file.")
