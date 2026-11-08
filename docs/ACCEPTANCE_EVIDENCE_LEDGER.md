@@ -114,3 +114,18 @@ The test-only change in commit ce52ea6772eca73e00fde6b6c1f7f38817cd3f29 adds an 
 - The user-supplied local run before this change reported 119 passed, 1 failed, 3 skipped on Python 3.14.9. The failure occurred because FFmpeg's compiled feature listing was mistaken for proof of an available NVIDIA runtime. The new preflight addresses this classification gap; it does not demonstrate a successful physical-GPU encode.
 
 The change is confined to tests/test_video_integration.py; no application processing code changed. Gate A remains NOT READY pending the 24 MP reference-host benchmark, calibrated-display review, hash-verified Python dependencies, immutable Docker/system package sources, and complete direct/transitive license inventory. Optional VID-01 remains TERHAMBAT until exercised on supported physical NVIDIA hardware. PR #64 remains draft and unmerged.
+
+
+## Evidence update — local NVIDIA GPU integration, 2026-11-08
+
+Application/test source candidate: `0d8feb9e1ef6f16f293680a0df4e44a9433655c9`.
+
+The target workstation successfully ran the production GPU integration tests after synchronizing the candidate branch:
+
+- `python -m compileall -q app.py core.py jobs.py video.py scripts tests`: exit 0.
+- `python -m pytest -q -rs tests/test_video_integration.py`: **2 passed, 0 skipped, 0 failed in 6.87 s**.
+- Hardware reported by the user: NVIDIA GeForce RTX 3050 6GB Laptop GPU; NVIDIA driver 615.78.08; FFmpeg n9.0.2 with libplacebo v7.360.1.
+- Independent manual filter verification: CUDA/NVDEC decode → `hwdownload,format=p010le` → libplacebo with an identity `.cube` LUT → P010 output passed (exit 0). HEVC NVENC Main 10 encoding passed (exit 0); ffprobe confirmed HEVC Main 10, `yuv420p10le`, limited range, BT.2020 non-constant matrix, HLG transfer and BT.2020 primaries.
+- The production integration test covers both HLG and Rec.709 export profiles. This is local hardware evidence, not hosted CI evidence.
+
+VID-01 is now **LULUS on the reported local NVIDIA workstation for the tested synthetic source and identity LUT**. This does not certify every camera/container/input variation or long-duration throughput. Hosted CI status for the new source commit must be checked separately. Gate A photo release blockers (PERF-02, calibrated-display review, dependency hashes, immutable Docker/system package sources, and full dependency license inventory) remain open.
