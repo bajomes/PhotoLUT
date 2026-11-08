@@ -144,3 +144,29 @@ The user synchronized the branch and executed:
 - GitHub Actions run [#42460363433](https://github.com/bajomes/PhotoLUT/actions/runs/42460363433) was observed in progress after checkout, dependency installation, fixture download, compilation and Docker image builds. Its final result is not yet established in this evidence entry.
 
 This closes the current local automated regression failure. It does **not** close PERF-02, calibrated-display review, dependency artifact hashes, immutable Docker/base-system sources, or DOC-01 dependency-license inventory. Gate A remains open pending those acceptance items and successful completion of the current hosted CI run.
+
+
+
+## Evidence update — final local regression and CI cancellation, 2026-11-08
+
+Candidate source/test commit: `94a98f9e4e0652ee30007ccdea99869157d05a34`.
+
+The user synchronized the branch and reported:
+- `python -m compileall -q app.py core.py jobs.py video.py scripts tests`: exit 0.
+- `python -m pytest -q -rs`: **121 passed, 3 skipped, 0 failed in 9.68 seconds**.
+- All three skips are local RAW integration fixtures absent from the checkout (two Nikon NEF files and one Canon CR2 file). The CI workflow downloads the fixtures; the Canon file is SHA-256 checked.
+
+GitHub Actions run [#42460363433](https://github.com/bajomes/PhotoLUT/actions/runs/42460363433) concluded **cancelled**, not passed and not failed by a test assertion. Its Python job completed setup, dependency installation, fixture download and compilation, but pytest was cancelled before its result was available. Its Docker job completed Compose validation, both Docker target builds, photo-image exclusion/import checks, non-root startup and the UI/API smoke script before cancellation; the job was cancelled during/after its final smoke stage. These partial results are not a substitute for a complete green CI run.
+
+The optional GPU video integration remains **LULUS for the tested synthetic source and identity LUT on the user's NVIDIA RTX 3050 workstation** (2 passed, 0 skipped in the dedicated integration run, plus manual Main 10/HLG output verification). This does not certify arbitrary camera/container inputs or sustained workloads.
+
+The README's video architecture description has been corrected to match the tested graph: CUDA/NVDEC frames are downloaded to system-memory P010, then libplacebo manages its own Vulkan context; an externally initialized FFmpeg Vulkan context is not injected. This is GPU processing but not zero-copy.
+
+Remaining Gate A blockers:
+- PERF-02: three fresh-process 24 MP RAW benchmark runs on the declared 8-core / 32-GB / NVMe reference host.
+- PRE-01 manual calibrated-display preview/export review.
+- REPRO-01: artifact-hash-verified Python dependency installation.
+- REPRO-02: immutable Python base-image digest and snapshot-pinned Debian system packages (including optional video stack).
+- DOC-01: complete direct/transitive dependency license inventory and review.
+
+The user's local 121-pass regression is green. The hosted CI run above is cancelled and must be rerun to completion on the current head. Gate A is not declared ready until the mandatory evidence gaps are closed. PR #64 remains draft and unmerged.
