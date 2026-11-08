@@ -78,3 +78,19 @@ Commit: [ce52ea6](https://github.com/bajomes/PhotoLUT/commit/ce52ea6772eca73e00f
 - Docker/UI job [128661639869](https://github.com/bajomes/PhotoLUT/actions/runs/42458206012): LULUS; Compose checks, both image builds, non-root startup and UI/API smoke passed.
 
 The optional physical GPU pipeline was not executed. Gate A remains BELUM SIAP pending PERF-02, calibrated visual review, hash-verified Python dependencies, immutable base/system package snapshot and full dependency license inventory. PR #64 remains draft and unmerged.
+
+
+## Local NVIDIA GPU verification — 2026-11-08
+
+Candidate source commit: `0d8feb9e1ef6f16f293680a0df4e44a9433655c9`.
+
+The user synchronized the branch with `git fetch origin` and `git pull --ff-only`. On the NVIDIA GeForce RTX 3050 6GB Laptop GPU (driver 615.78.08; FFmpeg n9.0.2; libplacebo v7.360.1):
+
+- `python -m compileall -q app.py core.py jobs.py video.py scripts tests`: **LULUS**.
+- `python -m pytest -q -rs tests/test_video_integration.py`: **2 passed, 0 skipped, 0 failed in 6.87 s**.
+- Manual HLG filter test with identity `.cube` LUT: **LULUS**, exit 0.
+- Manual HEVC NVENC Main 10 export: **LULUS**, exit 0. ffprobe confirmed HEVC Main 10, `yuv420p10le`, `tv` range, `bt2020nc`, `arib-std-b67`, and BT.2020 primaries.
+
+This is the first supplied evidence of the real local GPU integration test completing without skips. It supersedes the previous statement that VID-01 was blocked solely for lack of physical NVIDIA hardware on the target workstation. It does not establish hosted CI status for this commit or validate arbitrary source files and long-duration workloads.
+
+The full project test suite has not yet been rerun after this patch. Gate A remains open for PERF-02, calibrated-display review, hash-verified Python dependencies, immutable Docker/base-system sources, and the full dependency license inventory. PR #64 remains draft and unmerged.
