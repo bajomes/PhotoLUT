@@ -23,6 +23,13 @@ import tempfile
 import time
 from pathlib import Path
 
+# When invoked as `python scripts/benchmark_photo.py`, Python places the
+# scripts/ directory (not the repository root) at sys.path[0]. Add the project
+# root explicitly so the production modules are importable from any cwd.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
 import numpy as np
 import PIL
 import rawpy
