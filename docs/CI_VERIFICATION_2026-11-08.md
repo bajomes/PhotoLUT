@@ -122,3 +122,16 @@ Candidate commit: `aec5bbc59115fb7cbdd1d85eeb8c16712a3723e1`.
 The three 12.53 MP benchmark runs completed in 4.9265 s, 4.9646 s and 5.0184 s, with maximum peak RSS 473.35 MiB. This closes the required representative-workload performance measurement for that input. The original 24 MP / 8-core / 32-GB / NVMe profile is retained as a non-blocking capacity objective; no 24 MP result is claimed.
 
 Outstanding release-hardening evidence: calibrated-display visual review; hash-verified Python dependency artifacts; immutable Docker base-image digest and snapshot-pinned OS packages; complete direct/transitive dependency license inventory. These remain explicitly open and are not masked by the successful CI run.
+
+
+## Current verification snapshot — 2026-11-08, commit 934ec56
+
+This section supersedes older run/head references above where they conflict with the current candidate snapshot.
+
+- Candidate: `934ec567d68c99aff7d7193f1ab5845b29209e3a`.
+- GitHub Actions run [#42463321752](https://github.com/bajomes/PhotoLUT/actions/runs/42463321752): overall success. Python job: **122 passed, 2 skipped, 0 failed** in 80.38 seconds. Docker/UI job: success, including CPU/NVIDIA Compose validation, photo/video image builds, non-root container startup, and web UI/API schema smoke. The two skips are hosted-runner physical GPU video tests; they are separately exercised on the user's RTX 3050 workstation under the documented synthetic-input limits.
+- User local command after fast-forward to the same candidate: `pip check` passed; `compileall` passed; full pytest **121 passed, 3 skipped, 0 failed** in 10.04 seconds; benchmark CLI help passed; Docker Compose config passed.
+- The three local skips are RAW integration cases whose Nikon NEF ×2 and Canon CR2 fixtures are absent locally. CI downloads and tests the fixture set.
+- The local worktree was clean after verification. `.venv312/` and `photolut-diagnostic.txt` were preserved and excluded only through the local `.git/info/exclude`.
+
+Gate A is not declared complete by these automated results alone. Remaining evidence items are the calibrated-display visual review, artifact-hash-verified Python dependency installation, immutable Docker base digest and snapshot-pinned OS packages, and complete direct/transitive dependency license inventory. PR #64 remains draft and unmerged.
