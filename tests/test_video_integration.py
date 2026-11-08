@@ -11,11 +11,11 @@ import video
 
 
 def _gpu_video_stack_skip_reason() -> str | None:
-    """Skip when FFmpeg features or an NVIDIA runtime device are unavailable.
+    """Skip when FFmpeg features or an NVIDIA CUDA/NVENC runtime are unavailable.
 
-    Once CUDA, the NVIDIA Vulkan device and NVENC initialize successfully, the
-    integration test must execute the real CUDA -> Vulkan/libplacebo -> NVENC
-    pipeline. Failures after this preflight remain test failures.
+    libplacebo owns its Vulkan context. The integration test exercises the
+    actual NVDEC -> system-frame -> libplacebo/Vulkan -> NVENC graph; an
+    externally initialized FFmpeg Vulkan device is deliberately not used.
     """
     ffmpeg = shutil.which("ffmpeg")
     ffprobe = shutil.which("ffprobe")
@@ -60,19 +60,15 @@ def _gpu_video_stack_skip_reason() -> str | None:
             return "FFmpeg build lacks required GPU features: " + ", ".join(missing)
 
         # Listing compiled backends is not proof that this host/container has
-        # an accessible NVIDIA driver or device. Initialize each runtime and
-        # perform a one-frame Main 10 NVENC encode before scheduling the
-        # hardware integration test. This keeps CPU-only developer machines
-        # and hosted CI correctly classified as hardware-blocked, while a
-        # failure in the actual LUT filter graph on a usable NVIDIA host still
-        # fails the integration test.
+        # an accessible NVIDIA driver or device. Initialize CUDA and perform
+        # a one-frame Main 10 NVENC encode before scheduling the integration
+        # test. libplacebo's internal Vulkan context is exercised by the real
+        # filter graph below; do not pre-initialize an external Vulkan device.
         runtime_probe = subprocess.run(
             [
                 ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
                 "-init_hw_device", "cuda=cu:0",
-                "-init_hw_device", "vulkan=vk:NVIDIA",
-                "-filter_hw_device", "vk",
-                "-f", "lavfi", "-i", "color=c=black:s=256x256:r=1,format=p010le",
+                 "-f", "lavfi", "-i", "color=c=black:s=256x256:r=1,format=p010le",
                 "-frames:v", "1", "-c:v", "hevc_nvenc",
                 "-profile:v", "main10", "-pix_fmt", "p010le",
                 "-f", "null", "-",
@@ -102,6 +98,21 @@ pytestmark = pytest.mark.skipif(
 
 def _run(command: list[str]) -> None:
     subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
+
+
+def test_gpu_filter_uses_libplacebo_managed_vulkan_context(tmp_path: Path):
+    """Keep the proven CPU-frame/libplacebo path and avoid external hwupload."""
+    lut = tmp_path / "look.cube"
+    hlg_graph = video._gpu_ffmpeg_filter(lut, "hlg")
+    rec709_graph = video._gpu_ffmpeg_filter(lut, "rec709")
+
+    for graph in (hlg_graph, rec709_graph):
+        assert graph.startswith("[0:v]hwdownload,format=p010le,")
+        assert "hwupload" not in graph
+        assert graph.endswith("format=p010le[outv]")
+    assert "color_trc=arib-std-b67" in hlg_graph
+    assert "tonemapping=bt.2390" in rec709_graph
+    assert "color_trc=bt709" in rec709_graph
 
 
 def test_synthetic_hlg_video_exports_hlg_and_rec709_10bit_mp4(tmp_path: Path):
