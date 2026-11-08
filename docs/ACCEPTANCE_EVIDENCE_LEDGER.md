@@ -103,3 +103,14 @@ This run was triggered after the documentation updates and completed successfull
 - This confirms hosted CI for the candidate source. It does not close physical NVIDIA GPU integration, target-host 24 MP performance, calibrated-display review, hash-locked dependency installation, immutable OS/base-image rebuild, or the complete dependency license inventory.
 
 **Updated release gate: Gate A remains NOT READY for user acceptance.** No application-source change is included in this evidence update. PR #64 remains draft and unmerged.
+
+
+## Evidence update — GPU runtime preflight, CI run #42458206012 (2026-11-08)
+
+The test-only change in commit ce52ea6772eca73e00fde6b6c1f7f38817cd3f29 adds an actual NVIDIA runtime preflight after FFmpeg feature detection. It initializes CUDA and the NVIDIA Vulkan device and attempts a one-frame HEVC Main 10 NVENC encode. If the required runtime is unavailable, the optional hardware integration is classified as TERHAMBAT (pytest skip); if preflight succeeds, failures in the actual HLG/LUT processing path remain test failures.
+
+- Python job [128661639929](https://github.com/bajomes/PhotoLUT/actions/runs/42458206012): 122 passed, 1 skipped, 0 failed in 73.93 s, Ubuntu 24.04 / Python 3.12.16. The skip remains the expected hosted-runner limitation: FFmpeg lacks the libplacebo custom .cube LUT option. The test therefore did not execute physical GPU processing.
+- Docker/UI job [128661639869](https://github.com/bajomes/PhotoLUT/actions/runs/42458206012): LULUS. Compose validation, separate photo/video image builds, photo image FFmpeg exclusion/import, Playwright setup, non-root video container startup, and UI/API smoke completed successfully.
+- The user-supplied local run before this change reported 119 passed, 1 failed, 3 skipped on Python 3.14.9. The failure occurred because FFmpeg's compiled feature listing was mistaken for proof of an available NVIDIA runtime. The new preflight addresses this classification gap; it does not demonstrate a successful physical-GPU encode.
+
+The change is confined to tests/test_video_integration.py; no application processing code changed. Gate A remains NOT READY pending the 24 MP reference-host benchmark, calibrated-display review, hash-verified Python dependencies, immutable Docker/system package sources, and complete direct/transitive license inventory. Optional VID-01 remains TERHAMBAT until exercised on supported physical NVIDIA hardware. PR #64 remains draft and unmerged.
