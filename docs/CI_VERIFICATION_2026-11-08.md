@@ -38,3 +38,16 @@ Do not split the image by merely deleting the FFmpeg checks: the application imp
 ## Release decision
 
 **Gate A remains NOT READY for user acceptance.** The latest HEAD has green CI, but green CI does not close the hardware benchmark, calibrated visual review, full license audit, or system-image reproducibility requirements. PR #64 remains draft and unmerged.
+
+## Follow-up verification — candidate HEAD 2a9eb77
+
+The documentation commit `2a9eb77ee22cb8328b71030f1bcd6a1765e281f2` was verified by both push and pull-request workflows:
+
+| Run | Event | Python/integration | Docker/UI/API smoke | Overall |
+|---|---|---|---|---|
+| [#42444227536](https://github.com/bajomes/PhotoLUT/actions/runs/42444227536) | push | success | success | **LULUS** |
+| [#42444231132](https://github.com/bajomes/PhotoLUT/actions/runs/42444231132) | pull_request | success | success | **LULUS** |
+
+The pull-request Python job log records **122 passed, 1 skipped, 0 failed in 72.88 s** on GitHub-hosted Ubuntu 24.04 / Python 3.12.16. The skipped test remains `tests/test_video_integration.py:79`, because the runner FFmpeg build lacks the GPU/libplacebo custom `.cube` LUT option. The job also completed locked dependency installation, `pip check`, fixture download and checksum, and `compileall`. The Docker job passed Compose validation for CPU and NVIDIA configurations, image build, Playwright browser installation, container startup, non-root check, and UI/API smoke.
+
+This confirms CI for candidate HEAD `2a9eb77...`; it does not close physical GPU validation, reference-host performance, calibrated-display review, full dependency license inventory, or hermetic system-image reproducibility. These remain respectively **TERHAMBAT**, **TERHAMBAT**, **BELUM DIJALANKAN**, **BELUM DIJALANKAN**, and **BELUM DIJALANKAN**.
