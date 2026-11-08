@@ -1,7 +1,7 @@
 # PhotoLUT 1.1.0 — Current Acceptance Evidence Ledger
 
 **Candidate branch:** `release/1.1.0-scope-and-acceptance`  
-**Source candidate commit:** `d3ce6c81c28fc7e909515733cfc5cf28c7212aa2`  
+**Latest documented candidate commit:** `ae12403af30f1f74dff7e8da5bc8c11978ab23d6` (documentation update; application source unchanged)  
 **Current CI evidence:** [PR #42450265261](https://github.com/bajomes/PhotoLUT/actions/runs/42450265261) and [push #42450261576](https://github.com/bajomes/PhotoLUT/actions/runs/42450261576)  
 **Run environment:** GitHub-hosted Ubuntu 24.04 runner; Python 3.12.16; Docker Engine/Compose; Playwright Chromium.  
 **Status vocabulary:** LULUS / GAGAL / BELUM DIJALANKAN / TERHAMBAT. A skipped hardware-dependent test is never counted as LULUS.
@@ -187,3 +187,18 @@ The user ran the benchmark utility three times in separate Python processes on t
 - All three runs completed successfully and reported metadata preservation.
 
 The results verify that the benchmark entry point and RAW → LUT → JPEG/TIFF path execute end-to-end on this 12.53 MP DNG. They are not extrapolated to 24 MP and do not change the PERF-02 status: **TERHAMBAT** pending three fresh-process runs using a 24 MP RAW on the declared reference host.
+
+
+## Latest hosted CI — candidate commit aec5bbc, 2026-11-08
+
+GitHub Actions run [#42463023428](https://github.com/bajomes/PhotoLUT/actions/runs/42463023428) completed with overall **success** for candidate commit `aec5bbc59115fb7cbdd1d85eeb8c16712a3723e1`.
+
+- Python/integration job: **122 passed, 2 skipped, 0 failed** in 81.00 seconds. Both skips are the optional physical-GPU integration cases because the hosted runner FFmpeg lacks the libplacebo custom `.cube` LUT option. The user's RTX 3050 workstation has separate successful physical GPU evidence recorded above.
+- Docker/UI job: **success**. CPU and NVIDIA Compose configuration validation, photo and video image builds, photo-image FFmpeg exclusion/import check, Playwright installation, non-root video container startup, UI/API smoke and browser export smoke all completed successfully.
+- The run includes the benchmark entry-point import-path fix at commit `211f3ba` and the 12.53 MP benchmark evidence documentation commit `aec5bbc`. No application source changed in the latter.
+
+## Performance evidence classification clarification — 2026-11-08
+
+The three local benchmark runs on the supplied 4080×3072 (12.53 MP) DNG are **LULUS for that measured workload**: median total time 4.9646 s, maximum 5.0184 s, and maximum peak RSS 473.35 MiB. The original 24 MP / 8-core / 32-GB / NVMe target is retained as a non-blocking capacity profile. It is not a universal correctness requirement, and the 12.53 MP results are not extrapolated to 24 MP.
+
+Remaining release hardening items are tracked separately: calibrated-display visual review, artifact-hash-verified Python dependency installation, immutable Docker base digest and snapshot-pinned OS packages, and a complete direct/transitive dependency license inventory. These are not represented as completed by the benchmark or CI run above.
