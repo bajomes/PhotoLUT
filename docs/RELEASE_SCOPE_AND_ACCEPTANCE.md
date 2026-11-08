@@ -88,12 +88,12 @@ Status vocabulary is strict: **LULUS** means executed and passed; **GAGAL** mean
 
 ## 5. Execution snapshot
 
-GitHub Actions run **#42406743222** for PR #64 head commit `5fda9cdf24712cb9eacb62267a29f1022e1d2917` completed successfully:
-- Python/integration job: **122 passed, 1 skipped, 0 failed** in 87.16 seconds.
-- Docker/UI/API/Playwright smoke job: **success**, including linear-light preview pixel assertions, result-retention warning, export-dialog focus trap and format selection.
-- CPU and NVIDIA Compose configurations passed `docker compose config --quiet`; locked dependency installation, `pip check`, Python compilation and Docker image build passed.
-- The one skipped test is the physical GPU video integration because the hosted runner lacks the required libplacebo custom-LUT/GPU stack. This is a hardware/toolchain limitation, not a pass.
-- The run covers the current PR #64 head, including the retention notice and keyboard-focus regression tests.
+GitHub Actions run **#42463321752** for PR #64 head commit `934ec567d68c99aff7d7193f1ab5845b29209e3a` completed successfully:
+- Python/integration job: **122 passed, 2 skipped, 0 failed** in 80.38 seconds.
+- Docker/UI/API/Playwright smoke job: **success**, including CPU and NVIDIA Compose validation, separate photo/video image builds, non-root container startup, and web UI/API schema smoke tests.
+- The benchmark CLI import check from outside the repository root passed.
+- The two skipped tests are the physical GPU video integration cases; the hosted runner does not provide the required libplacebo custom-LUT/GPU stack. The GPU path is separately recorded as locally tested on the user's RTX 3050 workstation, with its stated synthetic-input/identity-LUT limits.
+- Run URL: https://github.com/bajomes/PhotoLUT/actions/runs/42463321752.
 
 ## 6. Candidate checkout and clean setup
 
@@ -142,3 +142,15 @@ The user synchronized candidate commit `94a98f9e4e0652ee30007ccdea99869157d05a34
 ## Performance criterion clarification — 2026-11-08
 
 The original 24 MP / 8-core / 32-GB / NVMe profile was too specific to serve as a universal functional release gate: megapixel count is a workload dimension, not a correctness requirement. PERF-02 is therefore split into (a) measured performance on a representative real RAW from the target workstation, which is required and now passes for the supplied 12.53 MP DNG, and (b) the original 24 MP reference profile, retained as a non-blocking capacity objective. This change does not extrapolate the 12.53 MP measurements to 24 MP or claim performance on untested hardware.
+
+
+## Local verification update — 2026-11-08
+
+The user synchronized commit `934ec567d68c99aff7d7193f1ab5845b29209e3a` and ran the consolidated local verification command successfully:
+- `.venv312/bin/python -m pip check`: no broken requirements.
+- `compileall` over application, scripts and tests: passed.
+- `pytest -q -rs`: **121 passed, 3 skipped, 0 failed** in 10.04 seconds.
+- `scripts/benchmark_photo.py --help`: passed.
+- `docker compose -f docker-compose.yml config --quiet`: passed.
+- The three local skips are the two Nikon NEF and one Canon CR2 fixture tests; those RAW fixture files are absent from the local checkout. CI separately exercises downloaded fixtures.
+- Working tree was clean after synchronization and verification. The local `.venv312/` and `photolut-diagnostic.txt` were preserved and added only to `.git/info/exclude`, not to the repository ignore rules.
