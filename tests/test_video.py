@@ -448,12 +448,13 @@ def test_transcode_never_falls_back_to_cpu_when_gpu_path_fails(tmp_path: Path, l
     assert not output.exists()
 
 
-def test_gpu_filter_routes_lut_through_vulkan_libplacebo(tmp_path: Path):
+def test_gpu_filter_routes_system_frames_through_libplacebo_managed_vulkan(tmp_path: Path):
     graph = video._gpu_ffmpeg_filter(tmp_path / "look.cube")
-    assert "hwupload" in graph
+    assert graph.startswith("[0:v]hwdownload,format=p010le,")
+    assert "hwupload" not in graph
     assert "libplacebo=lut=" in graph
     assert "lut_type=native" in graph
-    assert "hwdownload" in graph
+    assert graph.endswith("format=p010le[outv]")
     assert "bt2020" in graph
     assert "arib-std-b67" in graph
 
@@ -486,8 +487,8 @@ def test_transcode_uses_gpu_lut_path_when_available(tmp_path: Path):
     }
 
     def fake_run(command, **kwargs):
-        assert "-init_hw_device" in command
-        assert "vulkan=vk:NVIDIA" in command
+        assert "-init_hw_device" not in command
+        assert "-filter_hw_device" not in command
         assert command[command.index("-hwaccel") + 1] == "cuda"
         assert command[command.index("-hwaccel_device") + 1] == "0"
         assert command[command.index("-gpu") + 1] == "0"
@@ -600,7 +601,9 @@ def test_gpu_filter_tone_maps_hlg_before_rec709_lut(tmp_path: Path):
     assert graph.count("color_primaries=bt709") == 2
     assert graph.count("color_trc=bt709") == 2
     assert "color_primaries=bt2020" not in graph
-    assert graph.endswith("hwdownload,format=p010le[outv]")
+    assert graph.startswith("[0:v]hwdownload,format=p010le,")
+    assert graph.endswith("format=p010le[outv]")
+    assert "hwupload" not in graph
 
 
 def test_transcode_exports_rec709_lut_as_verified_sdr_bt709(tmp_path: Path):
