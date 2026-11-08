@@ -2,24 +2,26 @@
 
 Date: 2026-11-08  
 Candidate branch: `release/1.1.0-scope-and-acceptance`  
-Verified HEAD: `4b7301e7b1f552b47c73224aeee99607a6fbf22e`
+Latest verified HEAD: `2765f796d0ecdfe4c88e7ca308c01a62e4218184`
 
-## CI results for the current HEAD
+## CI results
 
-Both workflow runs completed successfully against the exact HEAD above:
+Both CI workflows completed successfully against the latest HEAD:
 
 | Run | Event | Python/integration job | Docker/UI/API smoke job | Overall |
 |---|---|---|---|---|
-| [#42408953659](https://github.com/bajomes/PhotoLUT/actions/runs/42408953659) | push | success | success | **LULUS** |
-| [#42408960673](https://github.com/bajomes/PhotoLUT/actions/runs/42408960673) | pull_request | success | success | **LULUS** |
+| [#42442777335](https://github.com/bajomes/PhotoLUT/actions/runs/42442777335) | push | success | success | **LULUS** |
+| [#42442780026](https://github.com/bajomes/PhotoLUT/actions/runs/42442780026) | pull_request | success | success | **LULUS** |
+
+Earlier documentation commits triggered runs #42442748634 and #42442753469, which were cancelled by the workflow concurrency policy after a newer commit superseded them. They are not counted as failures or passes. The successful runs above supersede them.
 
 The Python job completed dependency installation, pinned RAW fixture download, Python `compileall`, and `pytest -q -rs`. The Docker smoke job completed CPU/NVIDIA Compose configuration validation, image build, Playwright browser installation, container startup, non-root execution check, and UI/API smoke checks.
 
-These workflow summaries do not expose a fresh test-count summary in the job metadata retrieved for this addendum. The earlier exact-code-commit run #42407685107 reported 122 passed, 1 skipped, 0 failed. Do not transfer that count to the docs-only HEAD without the corresponding test log.
+The job metadata available for this report does not expose the detailed pytest count for HEAD `2765f796...`. The earlier exact-code-commit run #42407685107 reported 122 passed, 1 skipped, 0 failed in 79.30 seconds. Do not transfer that test count to the latest documentation HEAD without its test log.
 
 ## Scope of this evidence
 
-This addendum verifies that the documentation-only changes at HEAD did not break the CI pipeline. It does not close the following acceptance records:
+The successful runs verify that the latest documentation-only commits do not break the Python test job or Docker/UI/API smoke pipeline. They do not close the following acceptance records:
 
 - **VID-01 — TERHAMBAT:** no physical NVIDIA GPU / compatible driver / NVDEC-Vulkan-libplacebo-NVENC validation in the available runner.
 - **PERF-02 — TERHAMBAT:** no reference workstation matching 8 physical CPU cores, 32 GB RAM and NVMe for the predeclared 24 MP RAW benchmark (≤120 s/photo, ≤4 GiB peak RSS).
@@ -35,4 +37,4 @@ Do not split the image by merely deleting the FFmpeg checks: the application imp
 
 ## Release decision
 
-**Gate A remains NOT READY for user acceptance.** The current HEAD has green CI, but green CI does not close the hardware benchmark, calibrated visual review, full license audit, or system-image reproducibility requirements. PR #64 remains draft and unmerged.
+**Gate A remains NOT READY for user acceptance.** The latest HEAD has green CI, but green CI does not close the hardware benchmark, calibrated visual review, full license audit, or system-image reproducibility requirements. PR #64 remains draft and unmerged.
