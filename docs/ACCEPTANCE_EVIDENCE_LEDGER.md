@@ -170,3 +170,20 @@ Remaining Gate A blockers:
 - DOC-01: complete direct/transitive dependency license inventory and review.
 
 The user's local 121-pass regression is green. The hosted CI run above is cancelled and must be rerun to completion on the current head. Gate A is not declared ready until the mandatory evidence gaps are closed. PR #64 remains draft and unmerged.
+
+
+## Supplemental local benchmark — 12.53 MP DNG, 2026-11-08
+
+The user ran the benchmark utility three times in separate Python processes on the local CachyOS workstation. This is diagnostic evidence only and does **not** satisfy PERF-02 because the source is 12.53 MP, not the required 24 MP, and the reference-host hardware specification (8 physical cores / 32 GB RAM / NVMe) has not been established for this run.
+
+- Input: `PXL_20261108_082234299.RAW-02.ORIGINAL.dng`, 4080 × 3072 visible RAW dimensions (12.53 MP), 15,588,346 bytes.
+- LUT: `IWLTBAP Sedona - Standard.cube`, 32³, intensity 100%.
+- Environment: Python 3.12.15, rawpy 0.27.1, NumPy 2.5.4, Pillow 13.0.0, tifffile 2026.10.15; Linux 7.3.1-1-cachyos x86_64.
+- Total time: 4.9265 s, 4.9646 s, 5.0184 s (median 4.9646 s; max 5.0184 s).
+- Peak RSS: 472.43 MiB, 472.58 MiB, 473.35 MiB (max 473.35 MiB).
+- RAW decode: 0.5951 s, 0.6117 s, 0.6429 s.
+- LUT + blend: 2.9699 s, 3.0151 s, 2.9452 s.
+- Export: 1.3307 s, 1.3135 s, 1.3983 s.
+- All three runs completed successfully and reported metadata preservation.
+
+The results verify that the benchmark entry point and RAW → LUT → JPEG/TIFF path execute end-to-end on this 12.53 MP DNG. They are not extrapolated to 24 MP and do not change the PERF-02 status: **TERHAMBAT** pending three fresh-process runs using a 24 MP RAW on the declared reference host.
