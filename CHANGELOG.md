@@ -4,6 +4,9 @@ Notable changes to PhotoLUT are documented here.
 
 ## Unreleased
 
+### Fixed
+- Make the optional NVIDIA video integration test verify CUDA, NVIDIA Vulkan, and Main 10 NVENC runtime availability before attempting the hardware-only pipeline; actual LUT pipeline failures remain test failures after a successful preflight.
+
 ### Changed
 - Make NVIDIA GPU passthrough optional for the CPU-based RAW photo workflow; add a separate Compose overlay for the HLG video workflow.
 
