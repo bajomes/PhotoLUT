@@ -94,15 +94,15 @@ pip install -r requirements-dev.lock
 pytest -q
 ```
 
-On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1`.
+On Windows PowerShell, activate the environment with `.venv\\Scripts\\Activate.ps1`.
 
 Automated tests cover LUT parsing, interpolation, malformed LUT rejection, upload validation and limits, API processing and export, output profiles, metadata behavior, and job cleanup. Real-RAW CI fixtures currently cover Nikon NEF and Canon CR2; other camera models still need representative validation.
-
 
 ## Release engineering records
 
 - [PhotoLUT 1.1.0 release scope and acceptance matrix](docs/RELEASE_SCOPE_AND_ACCEPTANCE.md)
 - [Current acceptance evidence ledger](docs/ACCEPTANCE_EVIDENCE_LEDGER.md)
+- [CI verification addendum (2026-11-08)](docs/CI_VERIFICATION_2026-11-08.md)
 - [Architecture and risk audit](docs/ARCHITECTURE_RISK_AUDIT.md)
 - [Feature-parity contract draft (Gate B; product decision pending)](docs/FEATURE_PARITY_CONTRACT_DRAFT.md)
 
