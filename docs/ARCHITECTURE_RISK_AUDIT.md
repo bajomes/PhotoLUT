@@ -127,7 +127,7 @@ This section records source-level observations; it does not assert an exploitabl
 | REPRO-02 | **GAGAL** | Docker base image remains tag-based and OS package sources are not snapshot-pinned. |
 | VIS-01 | **BELUM DIJALANKAN** | Calibrated-display review still requires a physical calibrated display and operator evidence. |
 | DOC-01 | **BELUM DIJALANKAN** | Complete direct/transitive third-party license inventory and review are not recorded. |
-| ARC-02 / JOB-02 | **BELUM DIJALANKAN / UNSUPPORTED** | Process-local job state and semaphores still require a single-worker deployment. A deployment guard and multi-worker failure test have not been demonstrated. |
+| ARC-02 / JOB-02 | **LULUS untuk single-host, single-worker guard / UNSUPPORTED untuk multi-worker atau multi-host** | Uvicorn Docker command menetapkan satu worker; ASGI lifespan memperoleh non-blocking OS file lock pada work directory dan menolak proses kedua. CI menguji contention/reacquisition dan Docker smoke lulus. Ini tidak menyediakan distributed coordination. |
 | SEC-01 / PRIV-01 | **OUTSIDE DEFAULT LOCAL SCOPE / OPEN FOR PUBLIC DEPLOYMENT** | Default Compose is loopback-bound, but the application has no multi-user authentication/ownership model and no configurable metadata privacy policy. Do not expose publicly without an external authenticated boundary and an explicit metadata policy. |
 | SEC-02 | **BELUM DIJALANKAN as a complete suite** | Existing focused validation tests and source controls are not a substitute for a consolidated adversarial security suite. |
 
@@ -143,3 +143,8 @@ The following remain genuine release-hardening work, not documentation-only cave
 The application now acquires a non-blocking OS file lock at `$PHOTOLUT_WORK_DIR/.photolut-worker.lock` during ASGI lifespan startup and holds the descriptor until shutdown. A second application process using the same work directory fails startup with an explicit error instead of silently creating a second in-memory job registry. The Docker image command also explicitly sets Uvicorn `--workers 1`. The lock file is intentionally retained; the kernel releases the advisory lock when the owning process exits, including an abnormal exit.
 
 Implementation commits: `e01c21f` (application guard), `3c0d427` (contention/reacquisition test), and `ff61f8a` (Docker worker count). The test workflow triggered by `3c0d427` was pending at the time this audit entry was written. Therefore **ARC-02 is implemented but not yet verified by CI**; do not mark it LULUS until the new test and Docker startup smoke pass. This guard assumes the Linux/POSIX container runtime used by the supported Docker deployment; it does not provide distributed coordination across different hosts or separate, non-shared work directories.
+
+
+### CI result for single-worker guard
+
+Workflow run [#43405725804](https://github.com/bajomes/PhotoLUT/actions/runs/43405725804) completed successfully on 2026-11-13 for head `ea1315c03315169a5936c08b54ebd04163473db6`. Python job: **123 passed, 2 skipped, 0 failed** in 69.44 s. The two skips are the physical NVIDIA video integration tests; the hosted runner's CUDA initialization probe returned `Operation not permitted`, which is expected without an attached NVIDIA device. Docker smoke: **success**, including both image builds, photo-image FFmpeg exclusion/import, non-root video container, and UI/API browser smoke. This verifies the single-worker guard and container command on CI; physical GPU validation remains the separate RTX 3050 evidence above.
