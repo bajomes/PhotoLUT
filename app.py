@@ -4,6 +4,7 @@ import asyncio
 import base64
 import io
 import hashlib
+import fcntl
 import json
 import os
 import re
@@ -70,10 +71,32 @@ RAW_EXTENSIONS = {
 PREVIEW_MAX_SIDE = 1600
 
 
+def _acquire_single_worker_lock(work_dir: Path) -> int:
+    """Acquire an OS-level lock so a second app process cannot split in-memory job state."""
+    lock_path = work_dir / ".photolut-worker.lock"
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        os.close(fd)
+        raise RuntimeError(
+            "PhotoLUT supports one application worker per work directory; "
+            "multiple workers would split in-memory job state."
+        ) from exc
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    jobs.start_cleanup(WORK_DIR, max_age=1800, interval=120)
-    yield
+    worker_lock_fd = _acquire_single_worker_lock(WORK_DIR)
+    try:
+        jobs.start_cleanup(WORK_DIR, max_age=1800, interval=120)
+        yield
+    finally:
+        os.close(worker_lock_fd)
 
 
 app = FastAPI(title="PhotoLUT", description="Apply 3D .cube LUTs to RAW photos locally.", lifespan=lifespan)

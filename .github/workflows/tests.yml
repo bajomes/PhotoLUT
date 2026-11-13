@@ -31,7 +31,20 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest httpx2
+          pip install -r requirements-dev.lock
+          pip check
+      - name: Report pinned dependency license metadata
+        run: python scripts/audit_dependency_licenses.py --lock requirements-dev.lock
+      - name: Generate and verify hash-enforced Python locks
+        run: |
+          python scripts/generate_hashed_locks.py --output-dir /tmp/photolut-hashed-locks requirements.lock requirements-dev.lock
+          python -m pip download --no-deps --require-hashes -r /tmp/photolut-hashed-locks/requirements-dev.lock --dest /tmp/photolut-hash-verified-wheels
+      - name: Upload hash-enforced Python locks
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: photolut-hash-enforced-locks
+          path: /tmp/photolut-hashed-locks/*.lock
+          if-no-files-found: error
       - name: Download pinned RAW integration fixtures
         run: |
           mkdir -p test-data
@@ -41,6 +54,12 @@ jobs:
             https://raw.githubusercontent.com/letmaik/rawpy/a39c2e7a44911889c3360891012f862f904ba551/test/iss042e297200.NEF
           curl --fail --location --retry 3 --output test-data/Canon-5D-Mark-IV.CR2 https://github.com/tellodaniel/revelraw-sample-raw-files/releases/download/v1/Canon-5D-Mark-IV.CR2
           echo "02b23f9cc6dc4c99fb39aa4d1f65ac227804d06461ac1bd0f842aa2f3beb8fe4  test-data/Canon-5D-Mark-IV.CR2" | sha256sum -c -
+      - name: Compile Python sources and benchmark utility
+        run: python -m compileall -q app.py core.py jobs.py video.py scripts tests
+      - name: Verify benchmark CLI imports outside repository root
+        run: |
+          cd /tmp
+          python "$GITHUB_WORKSPACE/scripts/benchmark_photo.py" --help
       - name: Run tests
         env:
           PHOTOLUT_TEST_RAW_DIR: test-data
@@ -52,14 +71,23 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Build Docker image
-        run: docker build --tag photolut:ci .
+      - name: Validate CPU and NVIDIA Compose configurations
+        run: |
+          docker compose -f docker-compose.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.gpu.yml config --quiet
+      - name: Build separate photo and video images
+        run: |
+          docker build --target photo --tag photolut:ci-photo .
+          docker build --target video --tag photolut:ci-video .
+      - name: Verify photo image excludes FFmpeg and imports the application
+        run: |
+          docker run --rm photolut:ci-photo sh -ec '! command -v ffmpeg && python -c "import app"'
       - name: Install Playwright browser
         run: |
           python -m pip install playwright
           python -m playwright install --with-deps chromium
-      - name: Start container
-        run: docker run --detach --name photolut-ci --publish 127.0.0.1:8000:8000 photolut:ci
+      - name: Start video-capable container
+        run: docker run --detach --name photolut-ci --publish 127.0.0.1:8000:8000 photolut:ci-video
       - name: Verify container runs unprivileged
         run: test "$(docker exec photolut-ci id -u)" -ne 0
       - name: Smoke-test web UI and API schema

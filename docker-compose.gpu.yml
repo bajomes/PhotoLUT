@@ -1,0 +1,8 @@
+services:
+    lutphoto:
+        build:
+            context: .
+            target: video
+        gpus: all
+        environment:
+            NVIDIA_DRIVER_CAPABILITIES: "compute,utility,video,graphics"

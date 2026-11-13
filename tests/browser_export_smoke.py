@@ -11,6 +11,9 @@ PIXEL = (
     "R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="
 )
 
+PREVIEW_BLACK = "/test-preview-black.svg"
+PREVIEW_WHITE = "/test-preview-white.svg"
+
 
 def _output(output_id: str, filename: str) -> dict:
     return {
@@ -37,11 +40,23 @@ def main() -> None:
             request = route.request
             parsed = urlparse(request.url)
 
-            if parsed.path == "/api/preview":
+            if parsed.path == PREVIEW_BLACK:
+                route.fulfill(
+                    status=200,
+                    content_type="image/svg+xml",
+                    body='<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="#000000"/></svg>',
+                )
+            elif parsed.path == PREVIEW_WHITE:
+                route.fulfill(
+                    status=200,
+                    content_type="image/svg+xml",
+                    body='<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="#ffffff"/></svg>',
+                )
+            elif parsed.path == "/api/preview":
                 route.fulfill(
                     status=200,
                     content_type="application/json",
-                    body=json.dumps({"before": PIXEL, "graded": PIXEL}),
+                    body=json.dumps({"before": PREVIEW_BLACK, "graded": PREVIEW_WHITE}),
                 )
             elif parsed.path == "/api/process":
                 route.fulfill(
@@ -106,12 +121,114 @@ def main() -> None:
 
         process_button = page.locator("#processBtn")
         expect(process_button).to_be_enabled(timeout=10_000)
+        expect(page.locator("#previewWrap")).to_be_visible()
+        page.wait_for_function("""
+            () => {
+                const canvas = document.querySelector("#previewAfter");
+                return canvas && canvas.width === 1 && canvas.height === 1;
+            }
+        """)
+        set_intensity = lambda value: page.locator("#intensity").evaluate(
+            "(el, value) => { el.value = String(value); el.dispatchEvent(new Event('input', {bubbles:true})); }",
+            value,
+        )
+        preview_pixel = lambda: page.locator("#previewAfter").evaluate(
+            "canvas => Array.from(canvas.getContext('2d').getImageData(0, 0, 1, 1).data)"
+        )
+        set_intensity(0)
+        assert preview_pixel() == [0, 0, 0, 255]
+        set_intensity(50)
+        assert preview_pixel() == [188, 188, 188, 255], (
+            "50% black/white preview blend must be linear-light sRGB, not gamma-space opacity"
+        )
+        set_intensity(100)
+        assert preview_pixel() == [255, 255, 255, 255]
         process_button.click()
         expect(page.locator(".result-card")).to_have_count(2, timeout=10_000)
 
         page.locator('.result-card[data-output-id="0"] .remove-result').click()
         expect(page.locator(".result-card")).to_have_count(1)
         expect(page.locator("#summary")).to_contain_text("1 photos available for export")
+        expect(page.locator(".results-retention-note")).to_contain_text("30 minutes")
+
+        # The export picker must be keyboard-operable and restore focus.
+        page.locator("#dlZip").click()
+        expect(page.locator("#downloadPicker")).to_be_visible()
+        expect(page.locator("#downloadOptions button").first).to_be_focused()
+
+        # Recover focus if another script moved it outside the open dialog.
+        page.locator("#dlZip").focus()
+        page.keyboard.press("Tab")
+        expect(page.locator("#downloadOptions button").first).to_be_focused()
+        page.locator("#dlZip").focus()
+        page.keyboard.press("Shift+Tab")
+        expect(page.locator("#closeDownloadPicker")).to_be_focused()
+        page.locator("#downloadOptions button").first.focus()
+
+        # Hidden, inert, aria-hidden, disabled-fieldset, and negative-tabindex
+        # descendants must not be included in the modal focus sequence.
+        page.evaluate("""
+            const dialog = document.querySelector(".download-dialog");
+            for (const attributes of [
+                {style: "display:none"},
+                {"aria-hidden": "true"},
+                {inert: ""},
+                {tabindex: "-2"},
+            ]) {
+                const button = document.createElement("button");
+                button.textContent = "not focusable";
+                for (const [name, value] of Object.entries(attributes)) {
+                    if (name === "style") button.style.cssText = value;
+                    else button.setAttribute(name, value);
+                }
+                dialog.appendChild(button);
+            }
+            const disabledFieldset = document.createElement("fieldset");
+            disabledFieldset.disabled = true;
+            disabledFieldset.style.cssText = "position:absolute;left:-10000px";
+            const inheritedDisabledButton = document.createElement("button");
+            inheritedDisabledButton.textContent = "disabled by fieldset";
+            disabledFieldset.appendChild(inheritedDisabledButton);
+            dialog.appendChild(disabledFieldset);
+        """)
+
+        options = page.locator("#downloadOptions button")
+        expect(options).to_have_count(3)
+        page.keyboard.press("Tab")
+        expect(options.nth(1)).to_be_focused()
+        page.keyboard.press("Tab")
+        expect(options.nth(2)).to_be_focused()
+        page.keyboard.press("Tab")
+        expect(page.locator("#closeDownloadPicker")).to_be_focused()
+        page.keyboard.press("Tab")
+        expect(options.nth(0)).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(page.locator("#closeDownloadPicker")).to_be_focused()
+
+        page.keyboard.press("Shift+Tab")
+        expect(options.nth(2)).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(options.nth(1)).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(options.nth(0)).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(page.locator("#closeDownloadPicker")).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(options.nth(2)).to_be_focused()
+
+        page.keyboard.press("Escape")
+        expect(page.locator("#downloadPicker")).to_be_hidden()
+        expect(page.locator("#dlZip")).to_be_focused()
+
+        # Explicit close and backdrop dismissal must also restore the trigger.
+        page.locator("#dlZip").click()
+        page.locator("#closeDownloadPicker").click()
+        expect(page.locator("#downloadPicker")).to_be_hidden()
+        expect(page.locator("#dlZip")).to_be_focused()
+        page.locator("#dlZip").click()
+        page.locator("#downloadBackdrop").click(position={"x": 5, "y": 5})
+        expect(page.locator("#downloadPicker")).to_be_hidden()
+        expect(page.locator("#dlZip")).to_be_focused()
 
         for archive_format in ("jpeg", "tiff", "all"):
             page.locator("#dlZip").click()

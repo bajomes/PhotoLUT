@@ -1,0 +1,218 @@
+# PhotoLUT 1.1.0 — Current Acceptance Evidence Ledger
+
+**Candidate branch:** `release/1.1.0-scope-and-acceptance`  
+**Latest documented candidate commit:** `ae12403af30f1f74dff7e8da5bc8c11978ab23d6` (documentation update; application source unchanged)  
+**Current CI evidence:** [PR #42450265261](https://github.com/bajomes/PhotoLUT/actions/runs/42450265261) and [push #42450261576](https://github.com/bajomes/PhotoLUT/actions/runs/42450261576)  
+**Run environment:** GitHub-hosted Ubuntu 24.04 runner; Python 3.12.16; Docker Engine/Compose; Playwright Chromium.  
+**Status vocabulary:** LULUS / GAGAL / BELUM DIJALANKAN / TERHAMBAT. A skipped hardware-dependent test is never counted as LULUS.
+
+This ledger records the evidence available for the exact candidate commit above. It does not replace local acceptance on the declared target workstation or manual visual review.
+
+## Execution summary
+
+| Job | Result | Evidence |
+|---|---|---|
+| Python and integration | **LULUS** — 122 passed, 1 skipped, 0 failed; 79.30 s | CI run #42407685107, job `test`; log shows RAW fixture downloads/checksum, `compileall`, and `pytest -q -rs` |
+| Docker/UI/API smoke | **LULUS** | CI run #42407685107, job `docker-smoke`; Compose validation, Docker build, unprivileged container, UI/API schema, JS syntax, Playwright browser export smoke |
+| GPU video integration | **TERHAMBAT** | `tests/test_video_integration.py:79` skipped because hosted runner FFmpeg lacks libplacebo custom `.cube` LUT support |
+| 24 MP reference performance | **TERHAMBAT** | No declared 8-core/32-GB/NVMe reference host available in this session |
+| Calibrated-display visual review | **BELUM DIJALANKAN** | Requires target display, calibration state and human visual inspection |
+| Dependency/system-image reproducibility audit | **BELUM DIJALANKAN** | Current locks pin Python versions but lack artifact hashes; base image is a mutable tag; Debian Sid packages are not snapshot-pinned |
+| Full dependency license inventory | **BELUM DIJALANKAN** | Project MIT license inspected; complete direct/transitive dependency license report not produced |
+
+## Acceptance records
+
+The current automated test suite below ran on source candidate `d3ce6c81c28fc7e909515733cfc5cf28c7212aa2` in both push and pull-request workflows. The documentation-only follow-up commit does not change application source; CI evidence is tied to the source candidate SHA above.
+
+| ID | Scenario and input | Environment | Expected result / predeclared tolerance | Actual result | Evidence / status |
+|---|---|---|---|---|---|
+| IMP-01 | Upload supported RAW fixture(s), valid `.cube`; reject invalid extensions, empty/malformed inputs and limits | Ubuntu 24.04, Python 3.12.16, real Nikon NEF ×2 and Canon CR2 fixture | Valid job accepted; invalid inputs rejected with actionable HTTP errors | Test suite passed | `tests/test_api_validation.py`, `tests/test_app.py`; **LULUS** |
+| LUT-01 | Identity 3D LUT, including 2×2×2 fixture | Same CI Python environment | Maximum absolute float32 error ≤ 1e-6 | Test suite passed | `tests/test_core.py`; **LULUS** |
+| LUT-02 | Analytic affine LUT and channel-order/interpolation fixtures | Same CI Python environment | Maximum absolute interpolation error ≤ 2e-6 | Test suite passed | `tests/test_core.py`; **LULUS** |
+| LUT-03 | Malformed rows, invalid size/domain, NaN/Inf and overflow inputs | Same CI Python environment | Reject before producing a partial export | Test suite passed | `tests/test_core.py`, `tests/test_lut_overflow.py`; **LULUS** |
+| INT-01 | LUT intensity 0%, 50%, 100% | Python tests and browser pixel fixture | Endpoints exact; linear-light sRGB midpoint error ≤ 1e-6; black/white 50% result encodes to sRGB 188 | Test suite and browser smoke passed | `tests/test_core.py`, `tests/browser_export_smoke.py`; **LULUS** |
+| COL-01 | Values outside LUT domain and non-finite boundaries | Same CI Python environment | Domain handling deterministic; output finite and within [0,1] | Test suite passed | `tests/test_core.py`, `tests/test_memory_footprint.py`; **LULUS** |
+| COL-02 | 16-bit TIFF from real RAW fixture | Same CI Python environment; Nikon/Canon fixtures | RGB uint16; round-to-nearest quantization; embedded sRGB ICC | Integration suite passed | `tests/test_raw_integration.py`; **LULUS** |
+| COL-03 | JPEG from real RAW fixture | Same CI Python environment; Nikon/Canon fixtures | RGB JPEG quality 95; embedded sRGB ICC; dimensions and metadata checked, no lossless pixel-equality claim | Integration suite passed | `tests/test_raw_integration.py`; **LULUS** |
+| COL-04 | Alpha-channel behavior | Scope contract; RGB RAW decode and RGB JPEG/TIFF outputs | Alpha is explicitly unsupported and not advertised | Excluded from release contract | `docs/RELEASE_SCOPE_AND_ACCEPTANCE.md`; **LULUS as scope exclusion**, not alpha preservation |
+| PRE-01 | Preview and export use same LUT/domain/intensity semantics | Browser smoke; deterministic black/white pixels | Same transform semantics; no pixel identity claim because preview is reduced, 8-bit and JPEG encoded | Pixel assertions passed; calibrated display comparison not run | `tests/browser_export_smoke.py`; automated portion **LULUS**, calibrated visual portion **BELUM DIJALANKAN** |
+| UI-01 | Export picker keyboard navigation, Tab/Shift+Tab wrap, Escape, backdrop and focus restoration | Docker container + Playwright Chromium | Dialog focus contained; close restores focus to trigger | Browser smoke passed | `tests/browser_export_smoke.py`; **LULUS** |
+| UI-02 | JPEG, TIFF and all-format archive choices; delete a result during download lease | Python and Playwright tests | Correct archive contents; active download cannot be corrupted by deletion | Test suite and browser smoke passed | `tests/browser_export_smoke.py`, `tests/test_file_response_leases.py`; **LULUS** |
+| JOB-01 | Multi-file batch progress and processing failure | Same CI Python environment | Visible per-file progress and terminal done/failed state; release large image buffers between files | Test suite passed | `tests/test_processing_memory.py`, `tests/test_app.py`; **LULUS** |
+| JOB-02 | Concurrency limit and expired/orphan cleanup with active output lease | Same CI Python environment | Over-capacity returns HTTP 429; cleanup does not remove leased output | Test suite passed | `tests/test_jobs.py`, `tests/test_job_cleanup_locks.py`; **LULUS** |
+| RET-01 | Completed result retention warning and cleanup behavior | Docker/Playwright and Python CI | Warn of 30-minute expiry and container-recreation loss; cleanup respects leases | UI warning in browser smoke; cleanup regression in Python suite | `tests/browser_export_smoke.py`, `tests/test_job_cleanup_locks.py`; **LULUS** |
+| BUILD-01 | Clean Docker image build and startup as non-root (previous single-image architecture) | GitHub-hosted Ubuntu 24.04 Docker runner | Image builds; app serves UI/OpenAPI; runtime UID is non-zero | Previous image build, startup, non-root, UI/API smoke passed | `.github/workflows/tests.yml`, run #42407685107 job `docker-smoke`; **LULUS** for previous image architecture only |
+| BUILD-02 | Build CPU photo target without FFmpeg and import the application | GitHub-hosted Ubuntu 24.04 Docker runner | `docker build --target photo`; image contains no `ffmpeg`; `import app` succeeds | Build and runtime assertion both completed successfully on source candidate SHA | Run #42450265261 job `docker-smoke`, step 5; **LULUS** |
+| BUILD-03 | Build optional video target and smoke-test UI/API plus libplacebo custom LUT support | GitHub-hosted Ubuntu 24.04 Docker runner | `docker build --target video`; FFmpeg exposes libplacebo custom `.cube` LUT; non-root app serves UI/OpenAPI | Video image build, FFmpeg/libplacebo option checks, non-root startup, UI/API and browser export smoke all completed successfully. This does not execute GPU video processing on physical NVIDIA hardware. | Run #42450265261 job `docker-smoke`, steps 4 and 7–9; **LULUS** for image/build/smoke scope; VID-01 is **LULUS on the tested local NVIDIA configuration**; hosted CI remains hardware-limited |
+| RAW-01 | Decode two Nikon NEF and one Canon 5D Mark IV CR2; apply LUT and export | Python 3.12 CI; downloaded fixtures; Canon SHA-256 checked | Finite rendered sRGB; TIFF/JPEG, ICC, orientation and selected camera metadata validated | Integration suite passed | `tests/test_raw_integration.py`; **LULUS** for these three fixtures only |
+| PERF-01 | Synthetic 2400×3200 float32 RGB image and 17³ LUT, tiled processing | Linux CI subprocess | Peak RSS < 6× source image byte size | Test suite passed | `tests/test_memory_footprint.py`; **LULUS** |
+| PERF-02 | 24 MP RAW, single worker, reference 8 physical cores / 32 GB RAM / NVMe; three fresh-process runs | Target reference host unavailable | ≤120 s/photo and ≤4 GiB process peak RSS; report median and maximum | No valid reference-host measurements collected | `scripts/benchmark_photo.py`; **TERHAMBAT** |
+| VID-01 | Synthetic HLG BT.2020 10-bit source through NVIDIA NVDEC, Vulkan/libplacebo and NVENC | Local NVIDIA GeForce RTX 3050 Laptop GPU; hosted CI lacks custom-LUT GPU stack | HEVC Main 10; correct HLG/BT.2020 or SDR/BT.709 metadata; identity-LUT PSNR >30 dB | Local integration: HLG and Rec.709 tests passed 2/2; manual identity-LUT Main 10 HLG encode and ffprobe metadata passed. PSNR threshold not separately recorded. Hosted CI skips physical GPU path. | User local evidence, 2026-11-08; **LULUS** for tested hardware path, PSNR criterion not independently evidenced |
+| DOC-01 | Clean-checkout setup, feature limits, release notes, known limitations and license handoff | Repository docs review | Instructions match candidate; MIT notice and hardware limitations explicit | README, scope, architecture and parity docs exist; final handoff review still pending | `README.md`, `CHANGELOG.md`, `LICENSE`, `docs/`; **BELUM DIJALANKAN** for final review |
+
+## Scope decisions
+
+- **Wajib rilis:** RAW import and validation; 3D `.cube` import/application; 0–100% intensity; preview and before/after; reset/new batch; JPEG and 16-bit TIFF export; result removal; progress/actionable errors; retention warning.
+- **Opsional / jalur validasi terpisah:** HLG/BT.2020 video inspection and GPU LUT export. This is an existing experimental batch workflow, not a promise of timeline editing or Gate A photo release readiness. Active-job cancellation is also optional because the current worker cannot safely interrupt a LibRaw decode/export mid-operation.
+- **Di luar rilis 1.1.0:** undo/redo, persistent project recovery, exposure/contrast/WB/highlights/shadows/saturation/curves, crop/rotate editing, alpha workflow, camera-Log and HDR/wide-gamut still grading, video timeline/audio/general NLE functionality.
+- Lightroom, Snapseed, DaVinci Resolve and Kdenlive are workflow-quality references only. The current release does not claim full-product parity.
+
+## Current CI update — source candidate d3ce6c8
+
+Both latest workflows for source candidate `d3ce6c81c28fc7e909515733cfc5cf28c7212aa2` completed successfully:
+
+- PR run [#42450265261](https://github.com/bajomes/PhotoLUT/actions/runs/42450265261): Python/integration **122 passed, 1 skipped, 0 failed** in 57.67 s; Docker/UI/API job success.
+- Push run [#42450261576](https://github.com/bajomes/PhotoLUT/actions/runs/42450261576): Python/integration **122 passed, 1 skipped, 0 failed** in 70.77 s; Docker/UI/API job success.
+- Both Docker jobs validated CPU/NVIDIA Compose configurations, built `photo` and `video` targets, verified `photo` contains no FFmpeg and imports `app`, started the video-capable container as non-root, and passed UI/API plus Playwright browser export smoke.
+- The skipped test is `tests/test_video_integration.py:79`, because the hosted runner lacks FFmpeg libplacebo custom `.cube` LUT support for the GPU integration. It is not a pass.
+
+## Reproducibility and handoff limitations
+
+The Python lockfiles pin versions but do not contain artifact hashes. The Docker base image tag is mutable, and FFmpeg is installed from Debian Sid without a repository snapshot. A successful Docker build therefore demonstrates a successful build at the time of the run, not a hermetic or bit-for-bit reproducible build. The project MIT license is present; a complete dependency/transitive-license inventory remains outstanding.
+
+The application job registry and processing slots are process-local. The supported deployment remains a single application worker on loopback unless shared job state and public multi-user authentication/ownership controls are implemented and tested. Results are temporary and not recovered after container recreation.
+
+## Release gate
+
+**Gate A (PhotoLUT 1.1.0): NOT READY for user acceptance yet.** Core automated tests and both new Docker targets plus browser smoke pass on GitHub-hosted Ubuntu 24.04. The declared reference-host performance target, calibrated-display review, final documentation/license audit and reproducibility work are not closed.
+
+**Gate B (comparator parity): NOT CONTRACTED.** No comparator versions/platforms/workflow subsets have been selected as mandatory parity requirements. The matrix in `FEATURE_PARITY_CONTRACT_DRAFT.md` remains a planning record, not evidence of parity.
+
+No claim that all mandatory release criteria have passed is made by this ledger.
+
+
+## Evidence update — 2026-11-08, branch HEAD 89107d0
+
+Latest workflow run [#42451056317](https://github.com/bajomes/PhotoLUT/actions/runs/42451056317) completed successfully against application source candidate `d3ce6c81c28fc7e909515733cfc5cf28c7212aa2` (the current HEAD `89107d0` is documentation-only).
+
+- Python job `128640176116`: **122 passed, 1 skipped, 0 failed** in 79.78 s on Ubuntu 24.04 / Python 3.12.16. The skipped case is the optional GPU video integration because the runner FFmpeg lacks libplacebo custom `.cube` support.
+- Docker job `128640176289`: **LULUS**. Both `photo` and `video` targets built; photo image FFmpeg exclusion/import check, non-root video container, UI/API/OpenAPI, JavaScript syntax and Playwright browser export smoke passed.
+- Local candidate browser smoke supplied by the user: **LULUS**. Candidate `photolut:ci-video` served on isolated port 8002; temporary test-script copy targeting 8002 exited 0; only the temporary smoke container was stopped. The existing service on port 8000 was left untouched. The test mocks API behavior and is not a RAW/LUT processing test.
+
+The following remain open: **PERF-02 TERHAMBAT** (three 24 MP runs on the declared 8-core/32-GB/NVMe reference host), calibrated-display review **BELUM DIJALANKAN**, hash-verified Python dependencies **GAGAL**, immutable Docker base/system package snapshot **GAGAL**, full dependency license inventory **BELUM DIJALANKAN**, physical NVIDIA video integration **TERHAMBAT**. See the updated `docs/CI_VERIFICATION_2026-11-08.md`.
+
+**Gate A remains NOT READY for user acceptance.** PR #64 remains draft and unmerged.
+
+
+## Evidence update — CI run #42452630508 (2026-11-08)
+
+This run was triggered after the documentation updates and completed successfully on GitHub-hosted Ubuntu 24.04 / Python 3.12.16.
+
+- Python job [128644952110](https://github.com/bajomes/PhotoLUT/actions/runs/42452630508): **122 passed, 1 skipped, 0 failed in 69.98 s**. The log confirms dependency installation, `pip check`, download of two Nikon NEF fixtures and one Canon 5D Mark IV CR2 fixture (Canon SHA-256 verified), `python -m compileall -q app.py core.py jobs.py video.py scripts tests`, and `pytest -q -rs`. The one skip remains `tests/test_video_integration.py:79` because the hosted runner FFmpeg lacks libplacebo custom `.cube` LUT support.
+- Docker/UI job [128644952315](https://github.com/bajomes/PhotoLUT/actions/runs/42452630508): **LULUS**. CPU/NVIDIA Compose validation, separate photo/video image builds, photo-image FFmpeg exclusion and app import, Playwright browser installation, non-root video container startup, UI/API/OpenAPI smoke, inline JavaScript syntax check and browser export smoke completed.
+- This confirms hosted CI for the candidate source. It does not close physical NVIDIA GPU integration, target-host 24 MP performance, calibrated-display review, hash-locked dependency installation, immutable OS/base-image rebuild, or the complete dependency license inventory.
+
+**Updated release gate: Gate A remains NOT READY for user acceptance.** No application-source change is included in this evidence update. PR #64 remains draft and unmerged.
+
+
+## Evidence update — GPU runtime preflight, CI run #42458206012 (2026-11-08)
+
+The test-only change in commit ce52ea6772eca73e00fde6b6c1f7f38817cd3f29 adds an actual NVIDIA runtime preflight after FFmpeg feature detection. It initializes CUDA and the NVIDIA Vulkan device and attempts a one-frame HEVC Main 10 NVENC encode. If the required runtime is unavailable, the optional hardware integration is classified as TERHAMBAT (pytest skip); if preflight succeeds, failures in the actual HLG/LUT processing path remain test failures.
+
+- Python job [128661639929](https://github.com/bajomes/PhotoLUT/actions/runs/42458206012): 122 passed, 1 skipped, 0 failed in 73.93 s, Ubuntu 24.04 / Python 3.12.16. The skip remains the expected hosted-runner limitation: FFmpeg lacks the libplacebo custom .cube LUT option. The test therefore did not execute physical GPU processing.
+- Docker/UI job [128661639869](https://github.com/bajomes/PhotoLUT/actions/runs/42458206012): LULUS. Compose validation, separate photo/video image builds, photo image FFmpeg exclusion/import, Playwright setup, non-root video container startup, and UI/API smoke completed successfully.
+- The user-supplied local run before this change reported 119 passed, 1 failed, 3 skipped on Python 3.14.9. The failure occurred because FFmpeg's compiled feature listing was mistaken for proof of an available NVIDIA runtime. The new preflight addresses this classification gap; it does not demonstrate a successful physical-GPU encode.
+
+The change is confined to tests/test_video_integration.py; no application processing code changed. Gate A remains NOT READY pending the 24 MP reference-host benchmark, calibrated-display review, hash-verified Python dependencies, immutable Docker/system package sources, and complete direct/transitive license inventory. Optional VID-01 is now LULUS for the tested local NVIDIA configuration; hosted CI remains unable to exercise the physical GPU path. PR #64 remains draft and unmerged.
+
+
+## Evidence update — local NVIDIA GPU integration, 2026-11-08
+
+Application/test source candidate: `0d8feb9e1ef6f16f293680a0df4e44a9433655c9`.
+
+The target workstation successfully ran the production GPU integration tests after synchronizing the candidate branch:
+
+- `python -m compileall -q app.py core.py jobs.py video.py scripts tests`: exit 0.
+- `python -m pytest -q -rs tests/test_video_integration.py`: **2 passed, 0 skipped, 0 failed in 6.87 s**.
+- Hardware reported by the user: NVIDIA GeForce RTX 3050 6GB Laptop GPU; NVIDIA driver 615.78.08; FFmpeg n9.0.2 with libplacebo v7.360.1.
+- Independent manual filter verification: CUDA/NVDEC decode → `hwdownload,format=p010le` → libplacebo with an identity `.cube` LUT → P010 output passed (exit 0). HEVC NVENC Main 10 encoding passed (exit 0); ffprobe confirmed HEVC Main 10, `yuv420p10le`, limited range, BT.2020 non-constant matrix, HLG transfer and BT.2020 primaries.
+- The production integration test covers both HLG and Rec.709 export profiles. This is local hardware evidence, not hosted CI evidence.
+
+VID-01 is now **LULUS on the reported local NVIDIA workstation for the tested synthetic source and identity LUT**. This does not certify every camera/container/input variation or long-duration throughput. Hosted CI status for the new source commit must be checked separately. Gate A photo release blockers (PERF-02, calibrated-display review, dependency hashes, immutable Docker/system package sources, and full dependency license inventory) remain open.
+
+
+## Evidence update — full local regression after managed-libplacebo test alignment
+
+Candidate branch commit: `94a98f9e4e0652ee30007ccdea99869157d05a34`.
+
+The user synchronized the branch and executed:
+
+- `python -m compileall -q app.py core.py jobs.py video.py scripts tests`: exit 0.
+- `python -m pytest -q -rs`: **121 passed, 3 skipped, 0 failed in 9.68 s**.
+- The three skips are the Nikon NEF ×2 and Canon CR2 integration cases because those fixture files are not present in the user's local checkout. The CI workflow downloads these fixtures and verifies the Canon fixture checksum.
+- The three previously failing `tests/test_video.py` assertions were stale expectations for externally initialized Vulkan and upload/download filter placement. The test-only update now asserts the managed-libplacebo graph used by the production implementation. No production code changed in commit `94a98f9`.
+- GitHub Actions run [#42460363433](https://github.com/bajomes/PhotoLUT/actions/runs/42460363433) was observed in progress after checkout, dependency installation, fixture download, compilation and Docker image builds. Its final result is not yet established in this evidence entry.
+
+This closes the current local automated regression failure. It does **not** close PERF-02, calibrated-display review, dependency artifact hashes, immutable Docker/base-system sources, or DOC-01 dependency-license inventory. Gate A remains open pending those acceptance items and successful completion of the current hosted CI run.
+
+
+
+## Evidence update — final local regression and CI cancellation, 2026-11-08
+
+Candidate source/test commit: `94a98f9e4e0652ee30007ccdea99869157d05a34`.
+
+The user synchronized the branch and reported:
+- `python -m compileall -q app.py core.py jobs.py video.py scripts tests`: exit 0.
+- `python -m pytest -q -rs`: **121 passed, 3 skipped, 0 failed in 9.68 seconds**.
+- All three skips are local RAW integration fixtures absent from the checkout (two Nikon NEF files and one Canon CR2 file). The CI workflow downloads the fixtures; the Canon file is SHA-256 checked.
+
+GitHub Actions run [#42460363433](https://github.com/bajomes/PhotoLUT/actions/runs/42460363433) concluded **cancelled**, not passed and not failed by a test assertion. Its Python job completed setup, dependency installation, fixture download and compilation, but pytest was cancelled before its result was available. Its Docker job completed Compose validation, both Docker target builds, photo-image exclusion/import checks, non-root startup and the UI/API smoke script before cancellation; the job was cancelled during/after its final smoke stage. These partial results are not a substitute for a complete green CI run.
+
+The optional GPU video integration remains **LULUS for the tested synthetic source and identity LUT on the user's NVIDIA RTX 3050 workstation** (2 passed, 0 skipped in the dedicated integration run, plus manual Main 10/HLG output verification). This does not certify arbitrary camera/container inputs or sustained workloads.
+
+The README's video architecture description has been corrected to match the tested graph: CUDA/NVDEC frames are downloaded to system-memory P010, then libplacebo manages its own Vulkan context; an externally initialized FFmpeg Vulkan context is not injected. This is GPU processing but not zero-copy.
+
+Remaining Gate A blockers:
+- PERF-02: three fresh-process 24 MP RAW benchmark runs on the declared 8-core / 32-GB / NVMe reference host.
+- PRE-01 manual calibrated-display preview/export review.
+- REPRO-01: artifact-hash-verified Python dependency installation.
+- REPRO-02: immutable Python base-image digest and snapshot-pinned Debian system packages (including optional video stack).
+- DOC-01: complete direct/transitive dependency license inventory and review.
+
+The user's local 121-pass regression is green. The hosted CI run above is cancelled and must be rerun to completion on the current head. Gate A is not declared ready until the mandatory evidence gaps are closed. PR #64 remains draft and unmerged.
+
+
+## Supplemental local benchmark — 12.53 MP DNG, 2026-11-08
+
+The user ran the benchmark utility three times in separate Python processes on the local CachyOS workstation. This is diagnostic evidence only and does **not** satisfy PERF-02 because the source is 12.53 MP, not the required 24 MP, and the reference-host hardware specification (8 physical cores / 32 GB RAM / NVMe) has not been established for this run.
+
+- Input: `PXL_20261108_082234299.RAW-02.ORIGINAL.dng`, 4080 × 3072 visible RAW dimensions (12.53 MP), 15,588,346 bytes.
+- LUT: `IWLTBAP Sedona - Standard.cube`, 32³, intensity 100%.
+- Environment: Python 3.12.15, rawpy 0.27.1, NumPy 2.5.4, Pillow 13.0.0, tifffile 2026.10.15; Linux 7.3.1-1-cachyos x86_64.
+- Total time: 4.9265 s, 4.9646 s, 5.0184 s (median 4.9646 s; max 5.0184 s).
+- Peak RSS: 472.43 MiB, 472.58 MiB, 473.35 MiB (max 473.35 MiB).
+- RAW decode: 0.5951 s, 0.6117 s, 0.6429 s.
+- LUT + blend: 2.9699 s, 3.0151 s, 2.9452 s.
+- Export: 1.3307 s, 1.3135 s, 1.3983 s.
+- All three runs completed successfully and reported metadata preservation.
+
+The results verify that the benchmark entry point and RAW → LUT → JPEG/TIFF path execute end-to-end on this 12.53 MP DNG. They are not extrapolated to 24 MP and do not change the PERF-02 status: **TERHAMBAT** pending three fresh-process runs using a 24 MP RAW on the declared reference host.
+
+
+## Latest hosted CI — candidate commit aec5bbc, 2026-11-08
+
+GitHub Actions run [#42463023428](https://github.com/bajomes/PhotoLUT/actions/runs/42463023428) completed with overall **success** for candidate commit `aec5bbc59115fb7cbdd1d85eeb8c16712a3723e1`.
+
+- Python/integration job: **122 passed, 2 skipped, 0 failed** in 81.00 seconds. Both skips are the optional physical-GPU integration cases because the hosted runner FFmpeg lacks the libplacebo custom `.cube` LUT option. The user's RTX 3050 workstation has separate successful physical GPU evidence recorded above.
+- Docker/UI job: **success**. CPU and NVIDIA Compose configuration validation, photo and video image builds, photo-image FFmpeg exclusion/import check, Playwright installation, non-root video container startup, UI/API smoke and browser export smoke all completed successfully.
+- The run includes the benchmark entry-point import-path fix at commit `211f3ba` and the 12.53 MP benchmark evidence documentation commit `aec5bbc`. No application source changed in the latter.
+
+## Performance evidence classification clarification — 2026-11-08
+
+The three local benchmark runs on the supplied 4080×3072 (12.53 MP) DNG are **LULUS for that measured workload**: median total time 4.9646 s, maximum 5.0184 s, and maximum peak RSS 473.35 MiB. The original 24 MP / 8-core / 32-GB / NVMe target is retained as a non-blocking capacity profile. It is not a universal correctness requirement, and the 12.53 MP results are not extrapolated to 24 MP.
+
+Remaining release hardening items are tracked separately: calibrated-display visual review, artifact-hash-verified Python dependency installation, immutable Docker base digest and snapshot-pinned OS packages, and a complete direct/transitive dependency license inventory. These are not represented as completed by the benchmark or CI run above.
+
+
+## Latest candidate verification — 2026-11-08, commit 934ec56
+
+Candidate branch head: `934ec567d68c99aff7d7193f1ab5845b29209e3a`.
+
+- Hosted CI run [#42463321752](https://github.com/bajomes/PhotoLUT/actions/runs/42463321752): overall **success**. Python job: **122 passed, 2 skipped, 0 failed** in 80.38 s. Docker/UI job: **success**, including CPU/NVIDIA Compose validation, separate photo/video image builds, photo image FFmpeg exclusion/import check, non-root container startup, and web UI/API schema smoke. The two hosted skips are physical GPU video integration cases; see the local RTX 3050 evidence above.
+- User local verification on the same head: `pip check` passed; `compileall` passed; full suite **121 passed, 3 skipped, 0 failed** in 10.04 s; benchmark CLI help passed; Docker Compose config passed.
+- The three local skips are the two Nikon NEF and one Canon CR2 integration fixture cases absent from the local checkout; the CI workflow separately downloads the fixtures.
+- Local working tree clean after synchronization. The existing `.venv312/` and `photolut-diagnostic.txt` were preserved and added only to local `.git/info/exclude`, not repository ignore rules.
+
+This current snapshot supersedes earlier statements that the latest hosted CI was cancelled or that the representative 12.53 MP PERF-02 workload remained unmeasured. The 12.53 MP sample is accepted only for its measured workload; no 24 MP extrapolation is claimed.
+
+Remaining Gate A hardening evidence: calibrated-display preview/export review; artifact-hash-verified Python dependency installation; immutable Docker base-image digest and snapshot-pinned OS packages; complete direct/transitive dependency license inventory. PR #64 remains draft and unmerged.

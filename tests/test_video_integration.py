@@ -11,11 +11,11 @@ import video
 
 
 def _gpu_video_stack_skip_reason() -> str | None:
-    """Skip only when FFmpeg lacks required compiled features.
+    """Skip when FFmpeg features or an NVIDIA CUDA/NVENC runtime are unavailable.
 
-    If the features are present, the integration test must execute the real
-    CUDA -> Vulkan/libplacebo -> NVENC pipeline. A missing or unusable device
-    is then a test failure, not a skip.
+    libplacebo owns its Vulkan context. The integration test exercises the
+    actual NVDEC -> system-frame -> libplacebo/Vulkan -> NVENC graph; an
+    externally initialized FFmpeg Vulkan device is deliberately not used.
     """
     ffmpeg = shutil.which("ffmpeg")
     ffprobe = shutil.which("ffprobe")
@@ -39,12 +39,7 @@ def _gpu_video_stack_skip_reason() -> str | None:
             [ffmpeg, "-hide_banner", "-hwaccels"],
             check=True, capture_output=True, text=True, timeout=15,
         )
-        devices = subprocess.run(
-            [ffmpeg, "-hide_banner", "-init_hw_device", "list"],
-            check=False, capture_output=True, text=True, timeout=15,
-        )
         help_text = help_result.stdout + help_result.stderr
-        device_text = devices.stdout + devices.stderr
         missing = []
         if "hevc_nvenc" not in encoders.stdout + encoders.stderr:
             missing.append("hevc_nvenc")
@@ -54,10 +49,32 @@ def _gpu_video_stack_skip_reason() -> str | None:
             missing.append("libplacebo custom .cube LUT option")
         if not re.search(r"^cuda$", hwaccels.stdout + hwaccels.stderr, re.MULTILINE):
             missing.append("CUDA hwaccel")
-        if not re.search(r"(?:^|[,\s])vulkan(?:$|[,\s])", device_text, re.IGNORECASE):
-            missing.append("Vulkan hardware device support")
         if missing:
             return "FFmpeg build lacks required GPU features: " + ", ".join(missing)
+
+        # Listing compiled backends is not proof that this host/container has
+        # an accessible NVIDIA driver or device. Initialize CUDA and perform
+        # a one-frame Main 10 NVENC encode before scheduling the integration
+        # test. libplacebo's internal Vulkan context is exercised by the real
+        # filter graph below; do not pre-initialize an external Vulkan device.
+        runtime_probe = subprocess.run(
+            [
+                ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+                "-init_hw_device", "cuda=cu:0",
+                "-f", "lavfi", "-i", "color=c=black:s=256x256:r=1,format=p010le",
+                "-frames:v", "1", "-c:v", "hevc_nvenc",
+                "-profile:v", "main10", "-pix_fmt", "p010le",
+                "-f", "null", "-",
+            ],
+            check=False, capture_output=True, text=True, timeout=30,
+        )
+        if runtime_probe.returncode:
+            detail = (runtime_probe.stderr or runtime_probe.stdout or "").strip()
+            detail = detail[-800:] if detail else "No FFmpeg diagnostic was returned."
+            return (
+                "NVIDIA CUDA/NVENC runtime is unavailable on this host: "
+                + detail
+            )
         return None
     except (OSError, subprocess.SubprocessError) as exc:
         # A broken or unresponsive FFmpeg probe is not evidence that a build
@@ -74,6 +91,21 @@ pytestmark = pytest.mark.skipif(
 
 def _run(command: list[str]) -> None:
     subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
+
+
+def test_gpu_filter_uses_libplacebo_managed_vulkan_context(tmp_path: Path):
+    """Keep the proven CPU-frame/libplacebo path and avoid external hwupload."""
+    lut = tmp_path / "look.cube"
+    hlg_graph = video._gpu_ffmpeg_filter(lut, "hlg")
+    rec709_graph = video._gpu_ffmpeg_filter(lut, "rec709")
+
+    for graph in (hlg_graph, rec709_graph):
+        assert graph.startswith("[0:v]hwdownload,format=p010le,")
+        assert "hwupload" not in graph
+        assert graph.endswith("format=p010le[outv]")
+    assert "color_trc=arib-std-b67" in hlg_graph
+    assert "tonemapping=bt.2390" in rec709_graph
+    assert "color_trc=bt709" in rec709_graph
 
 
 def test_synthetic_hlg_video_exports_hlg_and_rec709_10bit_mp4(tmp_path: Path):
@@ -103,7 +135,7 @@ def test_synthetic_hlg_video_exports_hlg_and_rec709_10bit_mp4(tmp_path: Path):
 
     _run([
         ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-        "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=2:duration=1",
+        "-f", "lavfi", "-i", "testsrc2=size=256x256:rate=2:duration=1",
         "-f", "lavfi", "-i", "sine=frequency=1000:sample_rate=48000:duration=1",
         "-shortest",
         "-vf",

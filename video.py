@@ -321,27 +321,33 @@ def _gpu_ffmpeg_filter(lut_path: Path, lut_profile: str = "hlg") -> str:
     if lut_profile not in {"hlg", "rec709"}:
         raise ValueError("lut_profile must be 'hlg' or 'rec709'")
     lut = str(lut_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-    upload = "[0:v]hwdownload,format=p010le,hwupload,"
+    # Let libplacebo create and manage its own Vulkan device/context. On
+    # hybrid NVIDIA laptops, passing an externally initialized FFmpeg Vulkan
+    # context (or uploading frames into it) can make libplacebo graph
+    # negotiation fail even though its internal Vulkan path works. Keep frames
+    # in system memory at the filter boundary; libplacebo performs its own
+    # GPU upload/download internally.
+    input_frames = "[0:v]hwdownload,format=p010le,"
     if lut_profile == "rec709":
         # First create a properly tone-mapped SDR BT.709 image. The second
         # libplacebo pass applies the creative LUT to its intended native
         # BT.709 display-referred RGB values. The resulting export is SDR.
         return (
-            upload
+            input_frames
             + "libplacebo=tonemapping=bt.2390:format=p010le:"
             "colorspace=bt709:color_primaries=bt709:color_trc=bt709:"
             "range=tv:peak_detect=false,"
             + f"libplacebo=lut='{lut}':lut_type=native:format=p010le:"
             "colorspace=bt709:color_primaries=bt709:color_trc=bt709:"
             "range=tv:peak_detect=false,"
-            "hwdownload,format=p010le[outv]"
+            "format=p010le[outv]"
         )
     return (
-        upload
+        input_frames
         + f"libplacebo=lut='{lut}':lut_type=native:format=p010le:"
         "colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67:"
         "range=tv:peak_detect=false,"
-        "hwdownload,format=p010le[outv]"
+        "format=p010le[outv]"
     )
 
 
@@ -412,14 +418,12 @@ def transcode_hlg_video(
     selected_backend: str | None = None
     try:
         _write_intensity_lut(parsed_lut, intensity, baked_lut, lut_profile)
-        # Select Vulkan by vendor name instead of an unstable physical-device index.
-        # This prevents a hybrid laptop from silently grading on its integrated GPU
-        # or a software Vulkan implementation.
-        vulkan_device = "NVIDIA"
+        # NVDEC decodes on the NVIDIA GPU. libplacebo selects and manages
+        # its own Vulkan context; do not inject an external FFmpeg Vulkan
+        # device because that context breaks filter negotiation on some
+        # hybrid NVIDIA systems.
         command = [
-            ffmpeg, "-hide_banner", "-loglevel", "warning", "-y",
-            "-init_hw_device", f"vulkan=vk:{vulkan_device}",
-            "-filter_hw_device", "vk",
+            ffmpeg, "-hide_banner", "-loglevel", "verbose", "-y",
             "-hwaccel", "cuda", "-hwaccel_device", "0", "-hwaccel_output_format", "cuda",
             "-i", str(source), "-filter_complex", _gpu_ffmpeg_filter(baked_lut, lut_profile),
             "-map", "[outv]", "-map", "0:a?",
@@ -445,7 +449,7 @@ def transcode_hlg_video(
             raise RuntimeError(
                 "GPU-only video export failed. CPU processing was not started. "
                 "NVIDIA Vulkan/CUDA/NVENC diagnostics: "
-                + (detail[-2400:] or "No FFmpeg diagnostic was returned.")
+                + (detail[-6000:] or "No FFmpeg diagnostic was returned.")
             ) from exc
         if not output.is_file() or output.stat().st_size == 0:
             raise RuntimeError("FFmpeg did not produce a valid output file.")
