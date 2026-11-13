@@ -237,3 +237,16 @@ def test_delete_job_output_rejects_active_download_lease(tmp_path, monkeypatch):
             app.jobs._jobs.pop(job_id, None)
             app.jobs._output_locks.pop(job_id, None)
             app.jobs._active_output_leases.pop(job_id, None)
+
+
+
+def test_single_worker_lock_rejects_second_process_lock(tmp_path):
+    first_fd = app._acquire_single_worker_lock(tmp_path)
+    try:
+        with pytest.raises(RuntimeError, match="one application worker"):
+            app._acquire_single_worker_lock(tmp_path)
+    finally:
+        app.os.close(first_fd)
+
+    second_fd = app._acquire_single_worker_lock(tmp_path)
+    app.os.close(second_fd)
