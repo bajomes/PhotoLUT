@@ -45,21 +45,15 @@ def main() -> int:
             for value in md.get_all("Classifier", [])
             if value.startswith("License :: ")
         )
-        project_url = md.get("Home-page") or ""
-        if not project_url:
-            for value in md.get_all("Project-URL", []):
-                if value.lower().startswith(("homepage,", "source,")):
-                    project_url = value.split(",", 1)[-1].strip()
-                    break
-        rows.append((name, actual, license_value or "NOT DECLARED", classifiers or "NOT DECLARED"))
-    print("# Dependency license metadata inventory")
     print()
     print(f"Source lock: `{lock.as_posix()}`")
     print()
     print("| Distribution | Version | License metadata | License classifiers |")
     print("|---|---:|---|---|")
     for name, version, license_value, classifiers in rows:
-        print(f"| {name} | {version} | {license_value.replace('|', '\\|')} | {classifiers.replace('|', '\\|')} |")
+        license_cell = license_value.replace("|", "\\\\|")
+        classifier_cell = classifiers.replace("|", "\\\\|")
+        print(f"| {name} | {version} | {license_cell} | {classifier_cell} |")
     print()
     if missing:
         print("## Lock/install mismatches")
