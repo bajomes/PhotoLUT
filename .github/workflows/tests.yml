@@ -35,6 +35,16 @@ jobs:
           pip check
       - name: Report pinned dependency license metadata
         run: python scripts/audit_dependency_licenses.py --lock requirements-dev.lock
+      - name: Generate and verify hash-enforced Python locks
+        run: |
+          python scripts/generate_hashed_locks.py --output-dir /tmp/photolut-hashed-locks requirements.lock requirements-dev.lock
+          python -m pip download --no-deps --require-hashes -r /tmp/photolut-hashed-locks/requirements-dev.lock --dest /tmp/photolut-hash-verified-wheels
+      - name: Upload hash-enforced Python locks
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: photolut-hash-enforced-locks
+          path: /tmp/photolut-hashed-locks/*.lock
+          if-no-files-found: error
       - name: Download pinned RAW integration fixtures
         run: |
           mkdir -p test-data
