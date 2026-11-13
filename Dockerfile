@@ -19,7 +19,7 @@ RUN set -eux; \
       'Components: main' \
       'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
       > /etc/apt/sources.list.d/debian.sources; \
-    apt-get -o Acquire::Check-Valid-Until=false update; \
+    apt-get -o Acquire::Check-Valid-Until=false update \
     && apt-get -o Acquire::Check-Valid-Until=false install -y --no-install-recommends \
         libraw-dev \
         libimage-exiftool-perl \
