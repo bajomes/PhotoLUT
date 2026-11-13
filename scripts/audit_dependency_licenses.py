@@ -15,7 +15,7 @@ def parse_lock(path: Path) -> list[tuple[str, str]]:
         line = raw.strip()
         if not line or line.startswith("#") or line.startswith("--"):
             continue
-        match = re.match(r"^([A-Za-z0-9][A-Za-z0-9_.-]*)==([^;\\s]+)", line)
+        match = re.match(r"^([A-Za-z0-9][A-Za-z0-9_.-]*)==([^;\s]+)", line)
         if not match:
             raise ValueError(f"Unsupported or unpinned lock entry in {path}: {line}")
         packages.append((match.group(1), match.group(2)))
@@ -45,13 +45,15 @@ def main() -> int:
             for value in md.get_all("Classifier", [])
             if value.startswith("License :: ")
         )
+    print("# Dependency license metadata inventory")
     print()
     print(f"Source lock: `{lock.as_posix()}`")
     print()
     print("| Distribution | Version | License metadata | License classifiers |")
     print("|---|---:|---|---|")
+        rows.append((name, actual, license_value or "NOT DECLARED", classifiers or "NOT DECLARED"))
     for name, version, license_value, classifiers in rows:
-        license_cell = license_value.replace("|", "\\\\|")
+        license_cell = license_value.replace("|", "\\|")
         classifier_cell = classifiers.replace("|", "\\\\|")
         print(f"| {name} | {version} | {license_cell} | {classifier_cell} |")
     print()
