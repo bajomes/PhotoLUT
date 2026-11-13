@@ -24,7 +24,7 @@ USER photolut
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
 
 
 # Optional video/GPU image. This stage adds the FFmpeg/libplacebo, Vulkan and
