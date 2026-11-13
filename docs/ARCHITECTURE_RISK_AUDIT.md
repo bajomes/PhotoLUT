@@ -136,3 +136,10 @@ This section records source-level observations; it does not assert an exploitabl
 The earlier statement that no physical GPU test had been performed is superseded by the recorded local NVIDIA evidence above. The earlier 24 MP blocker is superseded by the accepted 12.53 MP representative-workload criterion; the 24 MP workload remains unmeasured and non-blocking. The hosted CI and local test evidence apply to code candidate `934ec56`, not to a claim that CI was rerun on documentation-only head `d600fe6`.
 
 The following remain genuine release-hardening work, not documentation-only caveats: hash-enforced Python dependencies; immutable Docker base digest and OS package snapshots; a single-worker enforcement mechanism; complete dependency license inventory; calibrated visual review; and a consolidated adversarial security test pass. Public/multi-user deployment remains unsupported without authentication, ownership isolation, durable shared job state, and an explicit metadata privacy policy.
+
+
+## 11. Single-worker guard implementation (2026-11-13)
+
+The application now acquires a non-blocking OS file lock at `$PHOTOLUT_WORK_DIR/.photolut-worker.lock` during ASGI lifespan startup and holds the descriptor until shutdown. A second application process using the same work directory fails startup with an explicit error instead of silently creating a second in-memory job registry. The Docker image command also explicitly sets Uvicorn `--workers 1`. The lock file is intentionally retained; the kernel releases the advisory lock when the owning process exits, including an abnormal exit.
+
+Implementation commits: `e01c21f` (application guard), `3c0d427` (contention/reacquisition test), and `ff61f8a` (Docker worker count). The test workflow triggered by `3c0d427` was pending at the time this audit entry was written. Therefore **ARC-02 is implemented but not yet verified by CI**; do not mark it LULUS until the new test and Docker startup smoke pass. This guard assumes the Linux/POSIX container runtime used by the supported Docker deployment; it does not provide distributed coordination across different hosts or separate, non-shared work directories.
