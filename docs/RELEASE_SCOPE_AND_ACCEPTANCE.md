@@ -73,7 +73,7 @@ Status vocabulary is strict: **LULUS** means executed and passed; **GAGAL** mean
 | PERF-01 | 2400×3200 float32 RGB synthetic image, 17³ LUT, 256-pixel tiles | Peak RSS < 6× source image byte size in fresh Linux subprocess | `tests/test_memory_footprint.py`; **LULUS** in CI run #42405436400 |
 | PERF-02 | Three fresh-process runs on a representative real RAW from the target workstation; current measured sample is 4080×3072 (12.53 MP) DNG | For the measured workload: ≤120 s/image and ≤4 GiB peak RSS. Report median and maximum. A separate 24 MP / 8-core / 32-GB / NVMe stress profile remains a non-blocking capacity target, not a functional release requirement | User workstation: 3/3 runs passed; median 4.9646 s, max 5.0184 s; peak RSS max 473.35 MiB. **LULUS for 12.53 MP sample only**; no 24 MP extrapolation |
 | VID-01 | Synthetic HLG BT.2020 10-bit source, NVIDIA NVDEC + libplacebo-managed Vulkan + NVENC | HLG output Main 10/BT.2020/HLG; Rec.709 output Main 10/BT.709; identity-LUT PSNR >30 dB | `tests/test_video_integration.py`; **LULUS on the user's RTX 3050 workstation** for synthetic source and identity LUT: 2 passed, 0 skipped; see `docs/ACCEPTANCE_EVIDENCE_LEDGER.md`. Arbitrary camera/container inputs and long-duration throughput are not certified. |
-| DOC-01 | Clean checkout setup, feature limits, release notes, license and known limitations | Instructions reproduce the local Docker workflow; MIT license and hardware-dependent limitations are explicit | `README.md`, `CHANGELOG.md`, `LICENSE`; final doc review **BELUM DIJALANKAN** |
+| DOC-01 | Clean checkout setup, feature limits, release notes, license and known limitations | Instructions reproduce the local Docker workflow; MIT license and hardware-dependent limitations are explicit | `README.md`, `CHANGELOG.md`, `LICENSE`, `docs/DEPENDENCY_LICENSES.md`; Python lock license metadata inventory **LULUS** in CI, OS package/license notice and compatibility review **BELUM DIJALANKAN** |
 
 ### Numerical quality and performance thresholds
 
@@ -117,9 +117,9 @@ The app's default work directory is container-local. Completed outputs are tempo
 
 ## 7. Environment, dependencies and reproducibility
 
-- Runtime baseline: Python 3.12 in Docker `python:3.12-slim-trixie`; Docker Compose; Linux container. Browser smoke uses Playwright Chromium.
-- Direct runtime dependencies are exactly pinned in `requirements.txt`; `requirements.lock` pins the resolved runtime graph and `requirements-dev.lock` pins the CI/development graph from the passing Python 3.12 Linux CI environment. These locks pin versions but do not yet record artifact hashes; cross-platform wheel resolution can still differ.
-- System packages are installed from Debian Trixie plus Debian Sid for FFmpeg/libplacebo. The Sid repository is not pinned to a snapshot; exact system-package reproducibility is therefore not guaranteed.
+- Runtime baseline: Python 3.12 in Docker `python:3.12-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b`; Docker Compose; Linux container. Browser smoke uses Playwright Chromium.
+- Direct runtime dependencies are exactly pinned in `requirements.txt`; `requirements.lock` pins the resolved runtime graph and `requirements-dev.lock` pins the CI/development graph from the passing Python 3.12 Linux CI environment. These locks pin versions but do not yet record artifact hashes; cross-platform wheel resolution can still differ. Python license metadata for all 27 development-lock distributions is recorded in `docs/DEPENDENCY_LICENSES.md`; OS package licenses/notices remain to be inventoried and reviewed.
+- System packages are installed from the fixed Debian snapshot `20261113T000000Z`: Trixie and Trixie updates/security for the photo base, plus Sid for FFmpeg/libplacebo in the video target. Both targets built successfully in CI run #43406341760. This pins package source selection, not bit-for-bit OCI layer output.
 - Photo processing is CPU-only. Video export requires a compatible NVIDIA GPU, driver, NVIDIA Container Toolkit, Vulkan and FFmpeg with the custom LUT option in libplacebo.
 - CI covers real RAW fixtures and Docker/browser smoke, but hosted runners do not prove physical NVIDIA GPU execution.
 
@@ -154,3 +154,8 @@ The user synchronized commit `934ec567d68c99aff7d7193f1ab5845b29209e3a` and ran 
 - `docker compose -f docker-compose.yml config --quiet`: passed.
 - The three local skips are the two Nikon NEF and one Canon CR2 fixture tests; those RAW fixture files are absent from the local checkout. CI separately exercises downloaded fixtures.
 - Working tree was clean after synchronization and verification. The local `.venv312/` and `photolut-diagnostic.txt` were preserved and added only to `.git/info/exclude`, not to the repository ignore rules.
+
+
+## Reproducibility update — 2026-11-13
+
+The Dockerfile now pins the Python 3.12 slim Trixie base by immutable manifest digest and uses Debian snapshot `20261113T000000Z` for Trixie, Trixie updates, security, and Sid. Both photo and video targets built successfully in CI run [#43406341760](https://github.com/bajomes/PhotoLUT/actions/runs/43406341760). Python dependencies remain version-pinned without artifact hashes, so Python hash-locked installation remains open. The same CI run reported license metadata for all 27 exact Python development-lock distributions; system-package license notices and compatibility review remain open.
