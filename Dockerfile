@@ -6,7 +6,7 @@ ARG DEBIAN_SNAPSHOT=20261113T000000Z
 # decoding and metadata handling. It deliberately has no FFmpeg/Vulkan stack.
 # Replace the base image's moving Debian mirrors with a fixed archive snapshot.
 RUN set -eux; \
-    printf '%s\\n' \
+    printf '%s\n' \
       'Types: deb' \
       "URIs: https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}" \
       'Suites: trixie trixie-updates' \
