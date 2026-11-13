@@ -124,9 +124,9 @@ This section records source-level observations; it does not assert an exploitabl
 | VID-01 | **LULUS, limited** | Physical GPU validation succeeded for the documented synthetic HLG/identity-LUT path on the RTX 3050 workstation. This supersedes the earlier “not performed” statement; it does not certify arbitrary inputs or sustained throughput. |
 | PERF-02 | **LULUS, limited** | The agreed representative-workload gate is met for the single 12.53 MP DNG sample and three measured runs. The former 24 MP reference-host target remains a non-blocking capacity/stress objective; no 24 MP claim is made. |
 | REPRO-01 | **GAGAL** | Python dependency lockfiles pin versions but do not provide hashes or enforce hash checking. |
-| REPRO-02 | **GAGAL** | Docker base image remains tag-based and OS package sources are not snapshot-pinned. |
+| REPRO-02 | **GAGAL, partially mitigated** | Python base image is now pinned to immutable multi-platform manifest digest `sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b` (Python 3.12 slim Trixie). Debian Trixie and Sid APT repositories/packages are still not snapshot-pinned; the full system build is not yet reproducible. |
 | VIS-01 | **BELUM DIJALANKAN** | Calibrated-display review still requires a physical calibrated display and operator evidence. |
-| DOC-01 | **BELUM DIJALANKAN** | Complete direct/transitive third-party license inventory and review are not recorded. |
+| DOC-01 | **IN PROGRESS** | Added a stdlib-only script that cross-checks every distribution/version in `requirements-dev.lock` against the installed environment and prints declared license metadata/classifiers. CI runs it. A complete reviewed inventory, license-text/notice capture, and compatibility decision are still outstanding. |
 | ARC-02 / JOB-02 | **LULUS untuk single-host, single-worker guard / UNSUPPORTED untuk multi-worker atau multi-host** | Uvicorn Docker command menetapkan satu worker; ASGI lifespan memperoleh non-blocking OS file lock pada work directory dan menolak proses kedua. CI menguji contention/reacquisition dan Docker smoke lulus. Ini tidak menyediakan distributed coordination. |
 | SEC-01 / PRIV-01 | **OUTSIDE DEFAULT LOCAL SCOPE / OPEN FOR PUBLIC DEPLOYMENT** | Default Compose is loopback-bound, but the application has no multi-user authentication/ownership model and no configurable metadata privacy policy. Do not expose publicly without an external authenticated boundary and an explicit metadata policy. |
 | SEC-02 | **BELUM DIJALANKAN as a complete suite** | Existing focused validation tests and source controls are not a substitute for a consolidated adversarial security suite. |
@@ -148,3 +148,12 @@ Implementation commits: `e01c21f` (application guard), `3c0d427` (contention/rea
 ### CI result for single-worker guard
 
 Workflow run [#43405725804](https://github.com/bajomes/PhotoLUT/actions/runs/43405725804) completed successfully on 2026-11-13 for head `ea1315c03315169a5936c08b54ebd04163473db6`. Python job: **123 passed, 2 skipped, 0 failed** in 69.44 s. The two skips are the physical NVIDIA video integration tests; the hosted runner's CUDA initialization probe returned `Operation not permitted`, which is expected without an attached NVIDIA device. Docker smoke: **success**, including both image builds, photo-image FFmpeg exclusion/import, non-root video container, and UI/API browser smoke. This verifies the single-worker guard and container command on CI; physical GPU validation remains the separate RTX 3050 evidence above.
+
+
+## 12. Reproducibility and license-inventory work in progress (2026-11-13)
+
+- Docker's Python base image is now pinned by immutable multi-platform manifest digest: `python:3.12-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b`. This removes tag drift for the Python base layer, but does not pin APT package resolution.
+- Added `scripts/audit_dependency_licenses.py`, a Python-standard-library report tool that reads the complete development lock, verifies installed versions match the pins, and prints each package's declared license metadata and license classifiers. The CI workflow now runs this report after dependency installation. It is metadata discovery, not a legal review; packages without declarations and actual license text/notice obligations must be resolved before DOC-01 can pass.
+- Python dependency lockfiles remain version-pinned without artifact hashes. REPRO-01 remains GAGAL.
+- APT still uses live Debian Trixie and Sid repositories. Snapshot pinning is not yet implemented or validated; REPRO-02 remains GAGAL despite the immutable base-image improvement.
+- These changes are under CI verification at the current branch head; do not treat the base-digest build or license report as passed until the corresponding workflow completes.
