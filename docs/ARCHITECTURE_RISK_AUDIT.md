@@ -101,3 +101,38 @@ This section records source-level observations; it does not assert an exploitabl
 - Hosted GitHub Actions results are inspected separately and cited by exact run/commit.
 - No penetration test, multi-user deployment test, calibrated-display review, reference-host benchmark or physical GPU test was performed.
 - Dependency license inventory has not yet been regenerated from the complete installed graph. The repository's MIT license was inspected; this is not a full third-party license compliance report.
+
+
+## 10. Current candidate evidence (supersedes stale status snapshots above)
+
+**Snapshot date:** 2026-11-13. **Current documentation branch head:** `d600fe604486878643f8219605be0dc02c008ad9`. The most recent tested application-code candidate is `934ec567d68c99aff7d7193f1ab5845b29209e3a`; the commits from that code candidate to the current head are documentation-only. This section corrects the historical gate statuses in sections 6, 8 and 9; it does not retroactively alter what was tested at earlier commits.
+
+### Verified evidence
+
+| Area | Current result | Scope of evidence |
+|---|---|---|
+| Hosted CI | **PASS**, run [#42463321752](https://github.com/bajomes/PhotoLUT/actions/runs/42463321752), code candidate `934ec56` | Python test job: 122 passed, 2 skipped. Docker smoke job passed, including separate photo/video builds, photo image without FFmpeg, non-root video container, and UI/API/browser smoke. |
+| Local Python regression | **PASS**, on user's workstation at code candidate `934ec56` | `pytest -q -rs`: 121 passed, 3 skipped; `pip check`, `compileall`, benchmark CLI help, and Compose config validation passed. Three skips are RAW integration fixtures absent from that workstation. |
+| NVIDIA video path | **PASS for the exercised synthetic path** | RTX 3050 Laptop GPU, driver 615.78.08, FFmpeg n9.0.2/libplacebo v7.360.1; targeted integration tests 2 passed. Synthetic HLG/Rec.2020 10-bit source with identity LUT completed Main10 HEVC output and expected BT.2020/HLG metadata. This is not broad footage, quality, or throughput certification. |
+| Representative RAW performance | **PASS for the measured sample** | Three fresh-process runs on one 4080×3072 (12.53 MP) DNG: median 4.9646 s, slowest 5.0184 s, maximum peak RSS 473.35 MiB. No 24 MP performance extrapolation is claimed. |
+| Repository synchronization | **PASS at snapshot** | User fast-forwarded to `d600fe6`; reported clean worktree. The three commits after `934ec56` changed documentation only. |
+
+### Corrected release-gate status
+
+| ID | Current status | Qualification |
+|---|---|---|
+| VID-01 | **LULUS, limited** | Physical GPU validation succeeded for the documented synthetic HLG/identity-LUT path on the RTX 3050 workstation. This supersedes the earlier “not performed” statement; it does not certify arbitrary inputs or sustained throughput. |
+| PERF-02 | **LULUS, limited** | The agreed representative-workload gate is met for the single 12.53 MP DNG sample and three measured runs. The former 24 MP reference-host target remains a non-blocking capacity/stress objective; no 24 MP claim is made. |
+| REPRO-01 | **GAGAL** | Python dependency lockfiles pin versions but do not provide hashes or enforce hash checking. |
+| REPRO-02 | **GAGAL** | Docker base image remains tag-based and OS package sources are not snapshot-pinned. |
+| VIS-01 | **BELUM DIJALANKAN** | Calibrated-display review still requires a physical calibrated display and operator evidence. |
+| DOC-01 | **BELUM DIJALANKAN** | Complete direct/transitive third-party license inventory and review are not recorded. |
+| ARC-02 / JOB-02 | **BELUM DIJALANKAN / UNSUPPORTED** | Process-local job state and semaphores still require a single-worker deployment. A deployment guard and multi-worker failure test have not been demonstrated. |
+| SEC-01 / PRIV-01 | **OUTSIDE DEFAULT LOCAL SCOPE / OPEN FOR PUBLIC DEPLOYMENT** | Default Compose is loopback-bound, but the application has no multi-user authentication/ownership model and no configurable metadata privacy policy. Do not expose publicly without an external authenticated boundary and an explicit metadata policy. |
+| SEC-02 | **BELUM DIJALANKAN as a complete suite** | Existing focused validation tests and source controls are not a substitute for a consolidated adversarial security suite. |
+
+### Corrected audit limitations
+
+The earlier statement that no physical GPU test had been performed is superseded by the recorded local NVIDIA evidence above. The earlier 24 MP blocker is superseded by the accepted 12.53 MP representative-workload criterion; the 24 MP workload remains unmeasured and non-blocking. The hosted CI and local test evidence apply to code candidate `934ec56`, not to a claim that CI was rerun on documentation-only head `d600fe6`.
+
+The following remain genuine release-hardening work, not documentation-only caveats: hash-enforced Python dependencies; immutable Docker base digest and OS package snapshots; a single-worker enforcement mechanism; complete dependency license inventory; calibrated visual review; and a consolidated adversarial security test pass. Public/multi-user deployment remains unsupported without authentication, ownership isolation, durable shared job state, and an explicit metadata privacy policy.
